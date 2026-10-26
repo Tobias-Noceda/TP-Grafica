@@ -283,6 +283,10 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
   instead. `RoomEnvironment` PMREM is set as `scene.environment` for metal reflections. Emissive lamp meshes + `UnrealBloomPass` give the glow; `OutputPass` applies ACES tone mapping.
   Custom `ShaderMaterial`s include `<tonemapping_fragment>` and `<colorspace_fragment>`.
 - No shadows yet (materials/lighting section of the brief still to be defined).
+- Platform (`app/platform.js`): `PLATFORM = { size: 10, height: 0.6, railWidth: 0.6 }`, centred at the origin. It has a
+  recessed ribbed deck, perimeter rails with emissive side lamps, corner clamp blocks, a yellow floor outline, and a
+  power console at `x ≈ -7.2` whose two cables are `TubeGeometry` swept along `CatmullRomCurve3`s. The fuselage attaches
+  to `platform.userData.mountPoint`, an `Object3D` at the centre of the rail tops (`y = 0.6`).
 
 ### 5.9 Part viewer (`viewer/main.js`)
 

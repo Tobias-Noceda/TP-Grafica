@@ -75,6 +75,12 @@ export function createMaterials(renderer) {
 			metalness: 0.4,
 		}),
 
+		rubber: new THREE.MeshStandardMaterial({
+			color: 0x141414,
+			roughness: 0.65,
+			metalness: 0,
+		}),
+
 		lampWarm: new THREE.MeshStandardMaterial({
 			color: 0x000000,
 			emissive: 0xffc68a,

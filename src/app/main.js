@@ -8,6 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 import { createMaterials } from './materials.js';
 import { buildHangar, HANGAR } from './hangar.js';
+import { buildPlatform } from './platform.js';
 import { buildSpace } from './space.js';
 
 let container, renderer, scene, camera, controls, composer, bloomPass, space;
@@ -54,6 +55,7 @@ function setupThreeJs() {
 function buildScene() {
 	const materials = createMaterials(renderer);
 	scene.add(buildHangar(materials));
+	scene.add(buildPlatform(materials));
 
 	space = buildSpace();
 	scene.add(space.group);
