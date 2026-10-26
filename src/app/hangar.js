@@ -331,20 +331,24 @@ function buildLights() {
 
 	lights.add(new THREE.HemisphereLight(0xa8b8d0, 0x2a2420, 0.6));
 
-	// Ceiling lights over the central floor
-	for (const x of [-8, 8]) {
-		for (const z of [-18, -6, 6, 18]) {
-			const light = new THREE.PointLight(0xffd2a0, 110, 0, 2);
+	// Real lights are kept to a minimum for performance; the lamps are emissive meshes that glow through bloom.
+	// Ceiling: 2x2 grid, each light centred in one quarter of the floor
+	for (const x of [-W / 4, W / 4]) {
+		for (const z of [-D / 4, D / 4]) {
+			const light = new THREE.PointLight(0xffd2a0, 180, 0, 2);
 			lights.add(place(light, x, H - 2.5, z));
 		}
 	}
 
-	// Warm wash along the side walls, matching the column lamp strips
-	for (const x of [-HALF_W + 2.5, HALF_W - 2.5]) {
-		for (const z of [-15, 0, 15]) {
-			const light = new THREE.PointLight(0xffc080, 60, 16, 2);
-			lights.add(place(light, x, 6, z));
-		}
+	// Walls: one warm wash centred on each side wall and on the back wall, matching the lamp strips
+	const wallLights = [
+		[-HALF_W + 2.5, 6, 0],
+		[HALF_W - 2.5, 6, 0],
+		[0, 6, -HALF_D + 2.5],
+	];
+	for (const [x, y, z] of wallLights) {
+		const light = new THREE.PointLight(0xffc080, 90, 22, 2);
+		lights.add(place(light, x, y, z));
 	}
 
 	return lights;
