@@ -11,9 +11,16 @@ import { buildHangar, HANGAR } from '../hangar/hangar.js';
 import { buildPlatform } from '../hangar/platform.js';
 import { buildSpace } from '../scene/space.js';
 import { buildFuselage } from '../parts/fuselage.js';
+import { createLoadout } from './loadout.js';
+import { createMenu } from './menu.js';
 
 let container, renderer, scene, camera, controls, composer, bloomPass, space, fuselage;
 const clock = new THREE.Clock();
+
+// Ship configuration edited by the menu
+const config = {
+	weapon: { variant: 'machineGun', hardpoint: 'nose' },
+};
 
 // Landing gear animation: `t` moves towards `target` (0 = retracted, 1 = deployed) in `duration` seconds
 const gear = { t: 1, target: 1, duration: 2 };
@@ -65,6 +72,12 @@ function buildScene() {
 
 	fuselage = buildFuselage(materials);
 	platform.userData.mountPoint.add(fuselage);
+
+	// Parts are mounted instantly until the crane assembles the ship
+	const loadout = createLoadout(fuselage, materials);
+	const equipWeapon = () => loadout.equip('weapon', config.weapon.variant, config.weapon.hardpoint);
+	equipWeapon();
+	createMenu(config, { onWeaponChange: equipWeapon });
 
 	space = buildSpace();
 	scene.add(space.group);

@@ -1,7 +1,9 @@
 # AGENTS.md
 
 Guide for agents and contributors working on **Astillero orbital** (TP Computación Gráfica, 2C 2026).
-The full brief is in `assignment.pdf`.
+The full brief is in `assignment.pdf`. Design decisions and the **register of where each required surface technique is
+used** are in `DECISIONS.md`. Read it before touching a part, and update it whenever a part adds, changes or removes a
+revolution, curved-path sweep or variable-shape sweep.
 
 ## 1. Project summary
 
@@ -11,8 +13,8 @@ fixed fuselage. Once assembled, the ship can be viewed from the pilot seat and i
 
 Two pages share the same geometry modules:
 
-| Page            | Purpose                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Page          | Purpose                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `app.html`    | Main scene: hangar, platform, crane, assembly sequence, menu, 6 cameras.                                                 |
 | `piezas.html` | Part viewer: pick part type and variant, toggle solid/wireframe, edit wing params, see the rebuild live. Orbital camera. |
 
@@ -21,12 +23,14 @@ Two pages share the same geometry modules:
 - Main parts (wings, thrusters, weapons) must be **generated procedurally at runtime**. Do not use GLTF/OBJ imports or
   externally generated static meshes. Primitives are allowed only for details, connectors, supports, crane, gear and
   other secondary elements.
-- Across all variants, the parts must include at least:
-  1. A **surface of revolution** whose profile visibly changes radius and curvature. A bare cylinder, cone or sphere
-     does not count.
-  2. A **sweep along a curved path** that visibly changes direction, with sections **oriented along the path**.
-  3. A **variable-shape sweep**, where the section geometry itself changes along the path. Translating, rotating,
-     twisting or uniformly scaling the section does not count.
+- Across all variants, the parts must include at least the following. **One use of each across the whole ship is
+  enough.** Not every piece needs every technique: a piece's look comes first, and it uses the technique that fits it
+  naturally (see `DECISIONS.md` §1):
+    1. A **surface of revolution** whose profile visibly changes radius and curvature. A bare cylinder, cone or sphere
+       does not count.
+    2. A **sweep along a curved path** that visibly changes direction, with sections **oriented along the path**.
+    3. A **variable-shape sweep**, where the section geometry itself changes along the path. Translating, rotating,
+       twisting or uniformly scaling the section does not count.
 - Profiles, paths and generating shapes must use **Three.js curves** (Bézier, Catmull-Rom, …). The curves must visibly
   shape the result.
 - Every wing variant (3 of them) needs at least one **geometric parameter** that rebuilds the geometry, for example
@@ -39,15 +43,15 @@ Two pages share the same geometry modules:
 
 Three.js is required by the brief. It also matches the course content closely:
 
-| Need in the project                             | What Three.js provides                                                                                                                                      | Theory source                                                 |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Hierarchical models (crane, landing gear, ship) | Scene graph:`Object3D`/`Group`. A node is a coordinate system and an edge is a relative transform. World matrix = `M_parent · M_local`.              | `transformations/arbol de la escena`                        |
-| Affine transforms and composition               | `position`/`rotation`/`scale` → `obj.matrix = T·Rz·Ry·Rx·S`, `Matrix4.make*`, `matrixAutoUpdate`, Euler `rotation.order`, `Quaternion` | `transformations/transformaciones 3D`                       |
-| Parametric curves                               | `CubicBezierCurve3`, `QuadraticBezierCurve3`, `CatmullRomCurve3`, `CurvePath`, 2D variants, `getPoint`/`getTangent`/`computeFrenetFrames`     | `curves/introduccion a curvas`, `curves/curvas de Bezier` |
-| Custom meshes with our own normals and UVs      | `BufferGeometry` + `BufferAttribute` (`position`, `normal`, `uv`) + `setIndex`                                                                  | `geometry/geometria`                                        |
-| Sweep and revolution surfaces                   | Built-ins (`LatheGeometry`, `TubeGeometry`, `ExtrudeGeometry`, `ParametricGeometry`, `ShapeGeometry`) plus room for a custom generator            | `geometry/implementacion de superficies`                    |
-| Cameras, controls, lights, materials, helpers   | `PerspectiveCamera`, `OrbitControls`, `PointerLockControls`, Phong/Standard materials, `GridHelper`, `AxesHelper`                                 | `transformations/three.js - conceptos básicos`             |
-| Runs in the browser with no native toolchain    | WebGL renderer, ES modules, Vite dev server                                                                                                                 | —                                                            |
+| Need in the project                             | What Three.js provides                                                                                                                    | Theory source                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Hierarchical models (crane, landing gear, ship) | Scene graph:`Object3D`/`Group`. A node is a coordinate system and an edge is a relative transform. World matrix = `M_parent · M_local`.   | `transformations/arbol de la escena`                      |
+| Affine transforms and composition               | `position`/`rotation`/`scale` → `obj.matrix = T·Rz·Ry·Rx·S`, `Matrix4.make*`, `matrixAutoUpdate`, Euler `rotation.order`, `Quaternion`    | `transformations/transformaciones 3D`                     |
+| Parametric curves                               | `CubicBezierCurve3`, `QuadraticBezierCurve3`, `CatmullRomCurve3`, `CurvePath`, 2D variants, `getPoint`/`getTangent`/`computeFrenetFrames` | `curves/introduccion a curvas`, `curves/curvas de Bezier` |
+| Custom meshes with our own normals and UVs      | `BufferGeometry` + `BufferAttribute` (`position`, `normal`, `uv`) + `setIndex`                                                            | `geometry/geometria`                                      |
+| Sweep and revolution surfaces                   | Built-ins (`LatheGeometry`, `TubeGeometry`, `ExtrudeGeometry`, `ParametricGeometry`, `ShapeGeometry`) plus room for a custom generator    | `geometry/implementacion de superficies`                  |
+| Cameras, controls, lights, materials, helpers   | `PerspectiveCamera`, `OrbitControls`, `PointerLockControls`, Phong/Standard materials, `GridHelper`, `AxesHelper`                         | `transformations/three.js - conceptos básicos`            |
+| Runs in the browser with no native toolchain    | WebGL renderer, ES modules, Vite dev server                                                                                               | —                                                         |
 
 **Where the built-ins fall short, and why we write our own sweep generator:**
 
@@ -94,26 +98,28 @@ src/
   app/crane.js           hierarchical crane + IK-free positional API
   app/assembly.js        state machine for the pick/lift/move/lower/release sequence
   app/cameras.js         6 cameras + switching
-  app/menu.js            Tweakpane UI (config, generate, pause, complete, reset, camera)
+  app/menu.js            Tweakpane UI, top-right (weapon type + position implemented; generate, pause, camera… to add)
+  app/loadout.js         which part kind sits on which hardpoint; equip/unequip with geometry disposal
   viewer/main.js         piezas.html entry (shares src/parts/*)
   geometry/
     uv.js                world-scale box-projected UVs for tiling textures on boxes
-    sweep.js             generic sweep / variable sweep / revolution generators
+    sweep.js             revolution generator (implemented); sweep / variable sweep to add when a part needs them
     frames.js            level matrices from curves (Frenet / parallel transport)
     caps.js              end caps via ShapeUtils triangulation
-    curves.js            curve factories (Bézier chains, Catmull-Rom helpers)
+    curves.js            bezierChain2, sampleShape (implemented); more factories as needed
   parts/
     fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
     wings.js             3 variants, each with params
     thrusters.js         2 variants (body + exhaust zone)
-    weapons.js           2 variants
+    weapons.js           2 variants (machineGun implemented: revolution barrel)
     landingGear.js       hierarchical (strut → knee → lowerLeg → wheel), setDeploy(t)
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
 ```
 
-Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `geometry/uv.js`, `parts/fuselage.js` and
-`parts/landingGear.js` exist. The rest of the tree (curves, frames, sweeps, wings, thrusters, weapons, crane, assembly,
-cameras, menu, viewer, registry) is still to be written.
+Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `geometry/uv.js`, `geometry/curves.js`,
+`geometry/sweep.js` (revolution only), `parts/fuselage.js`, `parts/landingGear.js`, `parts/weapons.js` (machine gun),
+`app/loadout.js` and `app/menu.js` (weapon controls only) exist. The rest (frames, caps, sweeps, wings, thrusters,
+second weapon, crane, assembly, cameras, viewer, registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
 requires.
@@ -218,7 +224,10 @@ export const wingVariants = {
   The left and right wings may be mirrored copies, using `scale.x = -1` on the parent group. Flip the winding or use
   `side: DoubleSide` when mirroring.
 - Thrusters: two variants, each with a clear **body** and **exhaust** zone. A revolution surface fits well here.
-- Weapons: two variants, made of primitives plus curves.
+- Weapons: two variants, made of primitives plus curves. `build(params, materials, { outward, clearance })`: they always fire
+  along `+z` with `+y` up, and `outward` (the socket's hull normal) only sets which way the pylon grows (`clearance`, optional per socket, sets its length), so one weapon
+  fits side and top hardpoints. They are built for the left side and mirrored with `scale.x = -1` for the right. `machineGun` (implemented) has a Bézier-profile revolution barrel
+  with params `barrelLength` and `muzzleFlare`, and a receiver, rail, sights, fins and magazine made of primitives.
 - Fuselage (fixed, implemented): X-wing inspired, built **only from primitives**, with no curves or sweeps. The main
   pieces are `taperedBox`es, which are `BoxGeometry`s with their corners moved so every face stays planar with flat
   normals. Nose points to `+z`, up `+y`, pilot's left `+x`. `FUSELAGE` holds the key z stations and the belly
@@ -227,8 +236,14 @@ export const wingVariants = {
   with emissive screens, and a seated pilot (orange suit, white helmet) sunk into the cockpit tub so the helmet
   clears the canopy. The group origin is the ground contact point
   between the gears, so it is added straight to `platform.userData.mountPoint`. `userData` holds
-  `pilotCameraAnchor` (already yawed to face `+z`), `sockets` (by name) and `setGearDeploy(t)`. Sockets live in
-  the `body` group: `socket_wing_L/R`, `socket_thruster_L/R`, `socket_weapon_L/R`, `socket_gear_front/back`.
+  `pilotCameraAnchor` (already yawed to face `+z`), `sockets` (by name), `setGearDeploy(t)` and
+  `mountPart(name, part)` / `unmountPart(name)` (mirrors parts on `R` sockets). Sockets live in the `body` group
+  and keep the ship orientation: `socket_wing_L/R`, hardpoint pairs `socket_nose_L/R`, `socket_top_L/R` and
+  `socket_tail_L/R`, and `socket_gear_front/back`. **Hardpoints** (exported `HARDPOINTS`) are positions, not part
+  types: each lists the kinds it `accepts` (nose: weapon, top: weapon + thruster, tail: thruster; wing hardpoints will
+  come from wing parts), and holds one kind at a time. Part sockets store `side`, `outward` (left-side frame) and a
+  cover (sibling in `body`, `socket.userData.cover`): hull-paint hatches with a dark seam and bolts on the sides and tail, round red-ringed pads
+  on the top fairing. `mountPart` hides the cover and `unmountPart` shows it again.
 - Landing gear (implemented): two gears, front (`z = 2.6`) and back (`z = -2.6`), each with twin wheels. Hierarchy is
   `root (socket) → strut → knee → lowerLeg → wheel`, with chrome joint pins on every pivot.
   `buildLandingGear(materials, { height, foldDirection })` sizes the legs so the wheels touch `y = -height` when
@@ -239,8 +254,8 @@ export const wingVariants = {
 
 - **Crane** (≥3 dependency levels): `rails (fixed) → bridge (moves along X) → trolley (moves along Z) → hoist/cable (scales/translates in Y) → gripper (claws rotate)`. Moving a parent must visibly carry its children.
 - **Pick-up / drop-off** with `Object3D.attach(child)`, which reparents while keeping the world transform:
-  - grab: `gripper.attach(part)`
-  - release: `socket.attach(part)`, then snap `part.position.set(0,0,0); part.quaternion.identity()`
+    - grab: `gripper.attach(part)`
+    - release: `socket.attach(part)`, then snap `part.position.set(0,0,0); part.quaternion.identity()`
 - World queries: `getWorldPosition`, `getWorldQuaternion`, `localToWorld`, `worldToLocal`, `updateMatrixWorld(true)`
   before reading.
 - Use `Box3().setFromObject(obj)` to compute the safe lift height (above the fuselage and the parts already mounted).
@@ -266,14 +281,14 @@ IDLE → MOVE_OVER_PART → LOWER → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET �
 
 ### 5.7 Cameras (`app/cameras.js`)
 
-| Key | Camera         | Implementation hint                                                                                    |
-| --- | -------------- | ------------------------------------------------------------------------------------------------------ |
-| 1   | Hangar orbital | `OrbitControls`, target at the hangar centre                                                         |
-| 2   | Ship orbital   | `OrbitControls`, target at the fuselage world position                                               |
-| 3   | Crane follow   | Child of the trolley/gripper, or copy its world position each frame +`lookAt(gripper)`               |
+| Key | Camera         | Implementation hint                                                                                |
+| --- | -------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | Hangar orbital | `OrbitControls`, target at the hangar centre                                                       |
+| 2   | Ship orbital   | `OrbitControls`, target at the fuselage world position                                             |
+| 3   | Crane follow   | Child of the trolley/gripper, or copy its world position each frame +`lookAt(gripper)`             |
 | 4   | Pilot          | `PerspectiveCamera` added to `fuselage.pilotCameraAnchor`, looking at the dashboard and windshield |
-| 5   | Ship chase     | Offset behind the ship in its local frame (`localToWorld`), smoothed with lerp                       |
-| 6   | First person   | `PointerLockControls` + WASD, Y clamped to eye height                                                |
+| 5   | Ship chase     | Offset behind the ship in its local frame (`localToWorld`), smoothed with lerp                     |
+| 6   | First person   | `PointerLockControls` + WASD, Y clamped to eye height                                              |
 
 `C` cycles through the cameras. On resize, update the `aspect` of **every** perspective camera and call
 `updateProjectionMatrix()`. Enable only the active camera's controls.
@@ -313,15 +328,15 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
 
 ## 6. Theory → code map
 
-| Theory file                                                        | Concepts to apply                                                                                                                               |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `geometry/geometria.pdf`                                         | `BufferGeometry`, attributes, index buffers, CCW order, flat vs smooth normals, `side`, `wireframe`                                       |
-| `geometry/implementacion de superficies.pdf`                     | Levels, level matrix`[N B T P]`, triangle strips, revolution as a sweep, built-in surface classes, `mergeGeometries`                        |
-| `curves/introduccion a curvas.pdf`                               | Control points, interpolation vs approximation, local vs global control, parametric form                                                        |
-| `curves/curvas de Bezier.pdf`                                    | De Casteljau, Bernstein bases, tangent = derivative, C0/C1 concatenation, discretisation                                                        |
-| `transformations/transformaciones 3D.pdf`                        | T/R/S matrices, homogeneous coordinates, composition order,`matrixAutoUpdate`, Euler order, gimbal lock                                       |
+| Theory file                                                     | Concepts to apply                                                                                                                           |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `geometry/geometria.pdf`                                        | `BufferGeometry`, attributes, index buffers, CCW order, flat vs smooth normals, `side`, `wireframe`                                         |
+| `geometry/implementacion de superficies.pdf`                    | Levels, level matrix`[N B T P]`, triangle strips, revolution as a sweep, built-in surface classes, `mergeGeometries`                        |
+| `curves/introduccion a curvas.pdf`                              | Control points, interpolation vs approximation, local vs global control, parametric form                                                    |
+| `curves/curvas de Bezier.pdf`                                   | De Casteljau, Bernstein bases, tangent = derivative, C0/C1 concatenation, discretisation                                                    |
+| `transformations/transformaciones 3D.pdf`                       | T/R/S matrices, homogeneous coordinates, composition order,`matrixAutoUpdate`, Euler order, gimbal lock                                     |
 | `transformations/arbol de la escena - 2 ejemplos prácticos.pdf` | Scene graph, local coordinate systems and pivots, subtrees (wheel/train/arm), kinematic chain,`clone()`, `mergeGeometries` for static parts |
-| `transformations/three.js - concepto básicos.pdf`               | Renderer/Scene/Camera, Mesh = Geometry + Material, lights, perspective vs orthographic, helpers                                                 |
+| `transformations/three.js - concepto básicos.pdf`               | Renderer/Scene/Camera, Mesh = Geometry + Material, lights, perspective vs orthographic, helpers                                             |
 
 ## 7. Pitfalls checklist
 

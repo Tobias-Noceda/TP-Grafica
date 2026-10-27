@@ -109,6 +109,12 @@ export function createMaterials(renderer) {
 			metalness: 1,
 		}),
 
+		gunMetal: new THREE.MeshStandardMaterial({
+			color: 0x3a3e44,
+			roughness: 0.4,
+			metalness: 0.85,
+		}),
+
 		flightSuit: new THREE.MeshStandardMaterial({
 			color: 0xd9622b,
 			roughness: 0.85,

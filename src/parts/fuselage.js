@@ -22,6 +22,24 @@ const NOSE_TIP = { halfWidth: 0.18, bottom: 0.26, top: 0.5 };
 // Centre of the pilot's helmet, in body space
 const PILOT_HEAD = { y: BODY.top + 0.38, z: -0.15 };
 
+// Raised fairing on top of the rear body, carrying the two top mounting pads
+const SPINE = { z: -2.9, length: 1.6, halfWidth: 0.42, height: 0.06 };
+const TOP_PAD_X = 0.24;
+
+/**
+ * Hardpoints: mounting positions shared by every kind of part that fits them. Each one is a mirrored pair of sockets
+ * (`L` on +x, `R` on -x). Weapons and thrusters are not tied to a socket type: any hardpoint whose `accepts` lists the
+ * part kind can hold it (one part per hardpoint at a time). Wing hardpoints will come from the wing parts.
+ */
+export const HARDPOINTS = {
+	nose: { label: 'Nose sides', accepts: ['weapon'], sockets: ['socket_nose_L', 'socket_nose_R'] },
+	top: { label: 'Top (rear)', accepts: ['weapon', 'thruster'], sockets: ['socket_top_L', 'socket_top_R'] },
+	tail: { label: 'Tail', accepts: ['thruster'], sockets: ['socket_tail_L', 'socket_tail_R'] },
+};
+
+// Depth of the dark plate on the tail; the thruster sockets sit on its outer face
+const REAR_PLATE_DEPTH = 0.05;
+
 const GEAR_SOCKETS = [
 	{ name: 'socket_gear_front', z: 2.6 },
 	{ name: 'socket_gear_back', z: -2.6 },
@@ -31,7 +49,9 @@ const GEAR_SOCKETS = [
  * Builds the fuselage with cockpit, pilot, sockets and two landing gears (front and back).
  *
  * The origin is the ground contact point between both gears, so the fuselage can be added directly to the platform
- * mount point. `userData` exposes `pilotCameraAnchor`, `sockets` (by name) and `setGearDeploy(t)`.
+ * mount point. `userData` exposes `pilotCameraAnchor`, `sockets` (by name), `setGearDeploy(t)`, and
+ * `mountPart(socketName, part)` / `unmountPart(socketName)`, which also hide or show that socket's cover and mirror
+ * parts mounted on the right side.
  */
 export function buildFuselage(materials) {
 	const fuselage = new THREE.Group();
@@ -46,8 +66,9 @@ export function buildFuselage(materials) {
 	body.add(buildCockpit(materials));
 	body.add(buildPilot(materials));
 
-	const sockets = buildSockets();
+	const { sockets, covers } = buildSockets(materials);
 	for (const socket of Object.values(sockets)) body.add(socket);
+	for (const cover of covers) body.add(cover);
 
 	const gears = GEAR_SOCKETS.map(({ name }) => {
 		const socket = sockets[name];
@@ -68,6 +89,19 @@ export function buildFuselage(materials) {
 		pilotCameraAnchor,
 		sockets,
 		setGearDeploy: (t) => gears.forEach((gear) => gear.userData.setDeploy(t)),
+		mountPart: (socketName, part) => {
+			const socket = sockets[socketName];
+			if (socket.userData.side === 'R') part.scale.x = -1;
+			socket.add(part);
+			socket.userData.cover.visible = false;
+		},
+		unmountPart: (socketName) => {
+			const socket = sockets[socketName];
+			const parts = [...socket.children];
+			socket.remove(...parts);
+			socket.userData.cover.visible = true;
+			return parts;
+		},
 	};
 
 	return fuselage;
@@ -155,14 +189,41 @@ function buildHull(materials) {
 	}
 
 	// Rear plate and dark panels on the sides of the rear body
-	hull.add(place(box(1.0, 0.7, 0.05, materials.hullDark), 0, 0.58, tailZ - 0.02));
+	hull.add(place(box(1.0, 0.7, REAR_PLATE_DEPTH, materials.hullDark), 0, 0.58, tailZ - REAR_PLATE_DEPTH / 2));
 	for (const side of [1, -1]) {
 		hull.add(place(box(0.03, 0.45, 1.4, materials.hullDark), side * (BODY.halfWidth + 0.015), 0.6, -0.9));
 		hull.add(place(box(0.03, 0.12, 2.6, materials.hullRed), side * (BODY.halfWidth + 0.015), 1.0, -2.5));
 	}
 
-	// Raised spine behind the cockpit
-	hull.add(place(box(0.5, 0.08, 1.6, materials.hullDark), 0, BODY.top + 0.04, -2.9));
+	// Raised fairing for the top hardpoint: painted like the hull, with red edge trims and dark grooves across
+	hull.add(
+		place(
+			box(2 * SPINE.halfWidth, SPINE.height, SPINE.length, materials.hullPaint),
+			0,
+			BODY.top + SPINE.height / 2,
+			SPINE.z
+		)
+	);
+	for (const side of [1, -1]) {
+		hull.add(
+			place(
+				box(0.04, SPINE.height + 0.01, SPINE.length, materials.hullRed),
+				side * (SPINE.halfWidth - 0.02),
+				BODY.top + SPINE.height / 2,
+				SPINE.z
+			)
+		);
+	}
+	for (const dz of [-0.65, 0.65]) {
+		hull.add(
+			place(
+				box(2 * SPINE.halfWidth - 0.1, 0.008, 0.03, materials.hullDark),
+				0,
+				BODY.top + SPINE.height,
+				SPINE.z + dz
+			)
+		);
+	}
 
 	return hull;
 }
@@ -284,24 +345,63 @@ function limb(radius, length, material) {
 }
 
 /**
- * Named attach points for the parts the crane will mount. Positions are in body space.
+ * Named attach points in body space: wing roots, hardpoint pairs (see `HARDPOINTS`) and gear hinges.
+ *
+ * Every socket keeps the ship's orientation (+z forward, +y up). Part sockets also store in `userData`:
+ * - `side`: 'L' or 'R'. Parts are built for the left side; `mountPart` mirrors them on the right (`scale.x = -1`).
+ * - `outward`: unit hull normal in the part's own (left-side) frame, so a builder knows which way to grow its
+ *   pylon: +x on the sides, +y on top, -z at the tail.
+ * - `clearance` (optional): minimum gap between the hull and the mounted part, when the default is not enough.
+ * - `cover`: the plate shown while the socket is empty. It is added to the body as a sibling of the socket, so
+ *   mounting a part never hides it by accident.
  */
-function buildSockets() {
+function buildSockets(materials) {
 	const sockets = {};
+	const covers = [];
 	const add = (name, x, y, z) => {
 		const socket = new THREE.Object3D();
 		socket.name = name;
 		socket.position.set(x, y, z);
 		sockets[name] = socket;
+		return socket;
 	};
 
-	const sideX = BODY.halfWidth;
-	add('socket_wing_L', sideX, 0.6, -2.6);
-	add('socket_wing_R', -sideX, 0.6, -2.6);
-	add('socket_thruster_L', 0.4, 0.58, FUSELAGE.tailZ);
-	add('socket_thruster_R', -0.4, 0.58, FUSELAGE.tailZ);
-	add('socket_weapon_L', noseSection(1.6).halfWidth, 0.4, 1.6);
-	add('socket_weapon_R', -noseSection(1.6).halfWidth, 0.4, 1.6);
+	// The nose sides lean inwards towards the tip; their normal tilts towards +z by the taper slope
+	const noseSlope = (BODY.halfWidth - NOSE_TIP.halfWidth) / (FUSELAGE.noseTipZ - FUSELAGE.noseStartZ);
+	const noseZ = 1.6;
+	const noseX = noseSection(noseZ).halfWidth;
+	const rearZ = FUSELAGE.tailZ - REAR_PLATE_DEPTH;
+	const topY = BODY.top + SPINE.height;
+
+	// Left-side definitions; the right side mirrors x
+	const pairs = [
+		{ name: 'socket_wing', at: [BODY.halfWidth, 0.6, -2.6], outward: [1, 0, 0], cover: { size: [1.4, 0.5] } },
+		{ name: 'socket_nose', at: [noseX, 0.4, noseZ], outward: [1, 0, noseSlope], cover: { size: [0.45, 0.28] } },
+		{ name: 'socket_tail', at: [0.4, 0.58, rearZ], outward: [0, 0, -1], cover: { size: [0.28, 0.3] } },
+		// Top parts stand on a tall pylon so they clear the canopy in front of them
+		{
+			name: 'socket_top',
+			at: [TOP_PAD_X, topY, SPINE.z],
+			outward: [0, 1, 0],
+			clearance: 0.4,
+			cover: { pad: 0.15 },
+		},
+	];
+
+	for (const { name, at, outward, clearance, cover } of pairs) {
+		for (const side of ['L', 'R']) {
+			const mirror = side === 'L' ? 1 : -1;
+			const socket = add(`${name}_${side}`, mirror * at[0], at[1], at[2]);
+			const normal = new THREE.Vector3(...outward).normalize();
+			socket.userData.side = side;
+			socket.userData.outward = normal.clone();
+			if (clearance) socket.userData.clearance = clearance;
+			socket.userData.cover = cover.pad
+				? buildPadCover(materials, socket.position, cover.pad)
+				: buildCover(materials, socket.position, normal.setX(mirror * normal.x), cover.size);
+			covers.push(socket.userData.cover);
+		}
+	}
 
 	// Gear hinges sit just inside the belly
 	for (const { name, z } of GEAR_SOCKETS) {
@@ -309,5 +409,64 @@ function buildSockets() {
 		add(name, 0, bottom + 0.04, z);
 	}
 
-	return sockets;
+	return { sockets, covers };
+}
+
+/**
+ * Cover for an unused side or tail socket, styled as a closed hull hatch so it does not read as an open mount: a
+ * hull-paint panel inside a thin dark seam, with four chrome bolts. Built facing local +z, then yawed so local +z
+ * matches the hull normal.
+ */
+function buildCover(materials, position, outward, [width, height]) {
+	const cover = new THREE.Group();
+	cover.name = 'socket-cover';
+	cover.position.copy(position);
+	cover.rotation.y = Math.atan2(outward.x, outward.z);
+
+	const seam = 0.02;
+	const seamThickness = 0.012;
+	const thickness = 0.02;
+	cover.add(place(box(width, height, seamThickness, materials.hullDark), 0, 0, seamThickness / 2));
+	cover.add(place(box(width - 2 * seam, height - 2 * seam, thickness, materials.hullPaint), 0, 0, thickness / 2));
+
+	const boltGeometry = new THREE.CylinderGeometry(0.016, 0.016, 0.01, 10);
+	for (const sx of [1, -1]) {
+		for (const sy of [1, -1]) {
+			const bolt = new THREE.Mesh(boltGeometry, materials.chrome);
+			bolt.rotation.x = Math.PI / 2;
+			cover.add(place(bolt, sx * (width / 2 - 0.06), sy * (height / 2 - 0.06), thickness + 0.005));
+		}
+	}
+
+	return cover;
+}
+
+/**
+ * Round mounting pad for an unused top socket, so it reads differently from the side plates: a white disc with a red
+ * ring and a chrome hub, sitting on the fairing.
+ */
+function buildPadCover(materials, position, radius) {
+	const pad = new THREE.Group();
+	pad.name = 'socket-pad';
+	pad.position.copy(position);
+
+	const height = 0.03;
+	pad.add(
+		place(
+			new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 28), materials.hullPaint),
+			0,
+			height / 2,
+			0
+		)
+	);
+
+	const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.72, 0.012, 8, 28), materials.hullRed);
+	ring.rotation.x = Math.PI / 2;
+	pad.add(place(ring, 0, height, 0));
+
+	pad.add(
+		place(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 16), materials.chrome), 0, height + 0.01, 0)
+	);
+
+	return pad;
 }
