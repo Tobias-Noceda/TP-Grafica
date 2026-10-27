@@ -81,6 +81,52 @@ export function createMaterials(renderer) {
 			metalness: 0,
 		}),
 
+		// Ship: untextured paint and metals
+		// Matte paint: the hull faces are flat, so a glossy finish reflects the lamps and environment on a whole face
+		hullPaint: new THREE.MeshStandardMaterial({
+			color: 0xd8d6cf,
+			roughness: 0.75,
+			metalness: 0.05,
+			envMapIntensity: 0.4,
+		}),
+
+		hullRed: new THREE.MeshStandardMaterial({
+			color: 0xa8231c,
+			roughness: 0.75,
+			metalness: 0.05,
+			envMapIntensity: 0.4,
+		}),
+
+		hullDark: new THREE.MeshStandardMaterial({
+			color: 0x2b2f35,
+			roughness: 0.6,
+			metalness: 0.7,
+		}),
+
+		chrome: new THREE.MeshStandardMaterial({
+			color: 0xc8ccd2,
+			roughness: 0.2,
+			metalness: 1,
+		}),
+
+		flightSuit: new THREE.MeshStandardMaterial({
+			color: 0xd9622b,
+			roughness: 0.85,
+			metalness: 0,
+		}),
+
+		glass: new THREE.MeshStandardMaterial({
+			color: 0x9fc4e0,
+			// The studio environment map has very bright panels; keep its reflection faint on the flat canopy faces
+			roughness: 0.1,
+			metalness: 0,
+			transparent: true,
+			opacity: 0.3,
+			depthWrite: false,
+			side: THREE.DoubleSide,
+			envMapIntensity: 0.35,
+		}),
+
 		lampWarm: new THREE.MeshStandardMaterial({
 			color: 0x000000,
 			emissive: 0xffc68a,

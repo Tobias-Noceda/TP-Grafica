@@ -87,10 +87,10 @@ piezas.html              part viewer entry
 public/textures/         imported PBR textures (Poly Haven, CC0) — see CREDITS.md
 src/
   app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, C, 1-6)
-  app/materials.js       texture loading + shared material library
-  app/hangar.js          hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
-  app/space.js           starfield, procedural gas giant + atmosphere shaders
-  app/platform.js        central assembly platform
+  app/materials.js       texture loading + shared material library (hangar + ship materials)
+  hangar/hangar.js       hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
+  hangar/platform.js     central assembly platform (PLATFORM dimensions, mountPoint on the deck)
+  scene/space.js         starfield, procedural gas giant + atmosphere shaders
   app/crane.js           hierarchical crane + IK-free positional API
   app/assembly.js        state machine for the pick/lift/move/lower/release sequence
   app/cameras.js         6 cameras + switching
@@ -103,13 +103,17 @@ src/
     caps.js              end caps via ShapeUtils triangulation
     curves.js            curve factories (Bézier chains, Catmull-Rom helpers)
   parts/
-    fuselage.js          fixed design + cockpit + attach points
+    fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
     wings.js             3 variants, each with params
     thrusters.js         2 variants (body + exhaust zone)
     weapons.js           2 variants
-    landingGear.js       hierarchical, animated retract/extend
+    landingGear.js       hierarchical (strut → knee → lowerLeg → wheel), setDeploy(t)
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
 ```
+
+Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `geometry/uv.js`, `parts/fuselage.js` and
+`parts/landingGear.js` exist. The rest of the tree (curves, frames, sweeps, wings, thrusters, weapons, crane, assembly,
+cameras, menu, viewer, registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
 requires.
@@ -215,10 +219,21 @@ export const wingVariants = {
   `side: DoubleSide` when mirroring.
 - Thrusters: two variants, each with a clear **body** and **exhaust** zone. A revolution surface fits well here.
 - Weapons: two variants, made of primitives plus curves.
-- Fuselage (fixed): cockpit with windshield (transparent material), simple dashboard, `pilotCameraAnchor`
-  (`Object3D`), and named sockets: `socket_wing_L/R`, `socket_thruster_L/R`, `socket_weapon_*`, `socket_gear_*`.
-- Landing gear: hierarchy `strut → knee → lowerLeg → wheel`. Expose `setDeploy(t ∈ [0,1])` and animate `t` with
-  easing. The `T` key toggles it.
+- Fuselage (fixed, implemented): X-wing inspired, built **only from primitives**, with no curves or sweeps. The main
+  pieces are `taperedBox`es, which are `BoxGeometry`s with their corners moved so every face stays planar with flat
+  normals. Nose points to `+z`, up `+y`, pilot's left `+x`. `FUSELAGE` holds the key z stations and the belly
+  `clearance` (1.2 m). It is made of a tapered tail, a rectangular rear body (`BODY` section), a wedge nose with red
+  stripes and a sensor probe, a faceted glass canopy (two tapered boxes) with frame hoop, a seat and a tilted dashboard
+  with emissive screens, and a seated pilot (orange suit, white helmet) sunk into the cockpit tub so the helmet
+  clears the canopy. The group origin is the ground contact point
+  between the gears, so it is added straight to `platform.userData.mountPoint`. `userData` holds
+  `pilotCameraAnchor` (already yawed to face `+z`), `sockets` (by name) and `setGearDeploy(t)`. Sockets live in
+  the `body` group: `socket_wing_L/R`, `socket_thruster_L/R`, `socket_weapon_L/R`, `socket_gear_front/back`.
+- Landing gear (implemented): two gears, front (`z = 2.6`) and back (`z = -2.6`), each with twin wheels. Hierarchy is
+  `root (socket) → strut → knee → lowerLeg → wheel`, with chrome joint pins on every pivot.
+  `buildLandingGear(materials, { height, foldDirection })` sizes the legs so the wheels touch `y = -height` when
+  deployed. `setDeploy(t ∈ [0,1])` rotates the strut and knee. `main.js` animates `t` with `smoothstep` over 2 s, and
+  the `T` key toggles it.
 
 ### 5.5 Scene graph and hierarchy
 
@@ -263,7 +278,7 @@ IDLE → MOVE_OVER_PART → LOWER → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET �
 `C` cycles through the cameras. On resize, update the `aspect` of **every** perspective camera and call
 `updateProjectionMatrix()`. Enable only the active camera's controls.
 
-### 5.8 Hangar and environment (`app/hangar.js`, `app/space.js`)
+### 5.8 Hangar and environment (`hangar/hangar.js`, `hangar/platform.js`, `scene/space.js`)
 
 Implemented in iteration 1. The hangar and environment are **not** ship parts, so imported textures/models are allowed
 here (the procedural-only rule applies to wings, thrusters and weapons).
@@ -283,10 +298,11 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
   instead. `RoomEnvironment` PMREM is set as `scene.environment` for metal reflections. Emissive lamp meshes + `UnrealBloomPass` give the glow; `OutputPass` applies ACES tone mapping.
   Custom `ShaderMaterial`s include `<tonemapping_fragment>` and `<colorspace_fragment>`.
 - No shadows yet (materials/lighting section of the brief still to be defined).
-- Platform (`app/platform.js`): `PLATFORM = { size: 10, height: 0.6, railWidth: 0.6 }`, centred at the origin. It has a
-  recessed ribbed deck, perimeter rails with emissive side lamps, corner clamp blocks, a yellow floor outline, and a
+- Platform (`hangar/platform.js`): `PLATFORM = { size: 10, height: 0.6, railWidth: 0.6, deckHeight: 0.3 }`, centred at
+  the origin. It has a recessed ribbed deck, perimeter rails with emissive side lamps, corner clamp blocks, a yellow floor outline, and a
   power console at `x ≈ -7.2` whose two cables are `TubeGeometry` swept along `CatmullRomCurve3`s. The fuselage attaches
-  to `platform.userData.mountPoint`, an `Object3D` at the centre of the rail tops (`y = 0.6`).
+  to `platform.userData.mountPoint`, an `Object3D` at the centre of the deck surface (`y = deckHeight = 0.3`). The
+  gear wheels stand on the deck, between the ribs (the centre rib runs between each pair of twin wheels).
 
 ### 5.9 Part viewer (`viewer/main.js`)
 

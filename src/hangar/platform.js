@@ -3,13 +3,14 @@ import * as THREE from 'three';
 import { setBoxProjectedUVs } from '../geometry/uv.js';
 
 /**
- * Central assembly platform, centred at the hangar origin. `size` is the outer side of the square frame and
- * `height` the top of its rails, where the fuselage will rest.
+ * Central assembly platform, centred at the hangar origin. `size` is the outer side of the square frame, `height` the
+ * top of its rails and `deckHeight` the recessed deck surface, where the ship's landing gear rests.
  */
 export const PLATFORM = {
 	size: 10,
 	height: 0.6,
 	railWidth: 0.6,
+	deckHeight: 0.3,
 };
 
 const S = PLATFORM.size;
@@ -21,8 +22,8 @@ const RAIL_H = PLATFORM.height;
  * Builds the platform: recessed deck, perimeter rails, corner clamp blocks, side lights, yellow floor outline and a
  * power console linked by cables. All lamps are emissive meshes (no real lights).
  *
- * The returned group exposes `userData.mountPoint`, an `Object3D` at the centre of the rail tops, to which the
- * fuselage will be attached.
+ * The returned group exposes `userData.mountPoint`, an `Object3D` at the centre of the deck surface, to which the
+ * fuselage is attached (its landing gear stands on the deck, between the ribs).
  */
 export function buildPlatform(materials) {
 	const platform = new THREE.Group();
@@ -38,7 +39,7 @@ export function buildPlatform(materials) {
 
 	const mountPoint = new THREE.Object3D();
 	mountPoint.name = 'mount-point';
-	mountPoint.position.set(0, RAIL_H, 0);
+	mountPoint.position.set(0, PLATFORM.deckHeight, 0);
 	platform.add(mountPoint);
 	platform.userData.mountPoint = mountPoint;
 
@@ -64,7 +65,7 @@ function buildDeck({ materials, tile }) {
 	deck.name = 'deck';
 
 	const inner = S - 2 * RAIL;
-	const deckTop = 0.3;
+	const deckTop = PLATFORM.deckHeight;
 	deck.add(place(box(inner, deckTop, inner, materials.darkMetal, tile), 0, deckTop / 2, 0));
 
 	const ribHeight = 0.06;
@@ -95,9 +96,7 @@ function buildRails({ materials, tile }) {
 		// Darker top strip on each rail
 		const capHeight = 0.04;
 		rails.add(place(box(S, capHeight, RAIL * 0.5, materials.darkMetal, tile), 0, RAIL_H, side * center));
-		rails.add(
-			place(box(RAIL * 0.5, capHeight, S - 2 * RAIL, materials.darkMetal, tile), side * center, RAIL_H, 0)
-		);
+		rails.add(place(box(RAIL * 0.5, capHeight, S - 2 * RAIL, materials.darkMetal, tile), side * center, RAIL_H, 0));
 
 		for (const offset of lampOffsets) {
 			const lampZ = box(0.45, 0.1, 0.04, materials.lampWarm);

@@ -7,12 +7,16 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 import { createMaterials } from './materials.js';
-import { buildHangar, HANGAR } from './hangar.js';
-import { buildPlatform } from './platform.js';
-import { buildSpace } from './space.js';
+import { buildHangar, HANGAR } from '../hangar/hangar.js';
+import { buildPlatform } from '../hangar/platform.js';
+import { buildSpace } from '../scene/space.js';
+import { buildFuselage } from '../parts/fuselage.js';
 
-let container, renderer, scene, camera, controls, composer, bloomPass, space;
+let container, renderer, scene, camera, controls, composer, bloomPass, space, fuselage;
 const clock = new THREE.Clock();
+
+// Landing gear animation: `t` moves towards `target` (0 = retracted, 1 = deployed) in `duration` seconds
+const gear = { t: 1, target: 1, duration: 2 };
 
 function setupThreeJs() {
 	container = document.getElementById('container3D');
@@ -49,13 +53,18 @@ function setupThreeJs() {
 	composer.addPass(new OutputPass());
 
 	window.addEventListener('resize', onResize);
+	window.addEventListener('keydown', onKeyDown);
 	onResize();
 }
 
 function buildScene() {
 	const materials = createMaterials(renderer);
 	scene.add(buildHangar(materials));
-	scene.add(buildPlatform(materials));
+	const platform = buildPlatform(materials);
+	scene.add(platform);
+
+	fuselage = buildFuselage(materials);
+	platform.userData.mountPoint.add(fuselage);
 
 	space = buildSpace();
 	scene.add(space.group);
@@ -73,12 +82,24 @@ function onResize() {
 	bloomPass.resolution.set(width, height);
 }
 
+function onKeyDown(event) {
+	if (event.code === 'KeyT') gear.target = 1 - gear.target;
+}
+
+function updateGear(dt) {
+	if (gear.t === gear.target) return;
+	const step = dt / gear.duration;
+	gear.t = gear.target > gear.t ? Math.min(gear.t + step, gear.target) : Math.max(gear.t - step, gear.target);
+	fuselage.userData.setGearDeploy(THREE.MathUtils.smoothstep(gear.t, 0, 1));
+}
+
 function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();
 
 	controls.update();
 	space.update(dt);
+	updateGear(dt);
 	composer.render(dt);
 }
 

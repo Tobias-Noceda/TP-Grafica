@@ -32,5 +32,8 @@ test/unit/build
 # Node modules
 /node_modules
 
+# Output
+/dist
+
 # Theory
 /theory

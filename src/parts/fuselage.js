@@ -1,0 +1,313 @@
+import * as THREE from 'three';
+
+import { buildLandingGear } from './landingGear.js';
+
+/**
+ * X-wing inspired fuselage, built only from primitives. The nose points to +z, up is +y and the pilot's left is +x.
+ *
+ * Sections are `{ halfWidth, bottom, top }` in body space (y = 0 is the belly of the rear body).
+ */
+export const FUSELAGE = {
+	clearance: 1.2, // belly height above the ground with the gear deployed
+	tailZ: -4.1,
+	bodyStartZ: -3.8,
+	noseStartZ: 0.6,
+	noseTipZ: 4.2,
+};
+
+const BODY = { halfWidth: 0.75, bottom: 0, top: 1.2 };
+const TAIL = { halfWidth: 0.62, bottom: 0.12, top: 1.05 };
+const NOSE_TIP = { halfWidth: 0.18, bottom: 0.26, top: 0.5 };
+
+// Centre of the pilot's helmet, in body space
+const PILOT_HEAD = { y: BODY.top + 0.38, z: -0.15 };
+
+const GEAR_SOCKETS = [
+	{ name: 'socket_gear_front', z: 2.6 },
+	{ name: 'socket_gear_back', z: -2.6 },
+];
+
+/**
+ * Builds the fuselage with cockpit, pilot, sockets and two landing gears (front and back).
+ *
+ * The origin is the ground contact point between both gears, so the fuselage can be added directly to the platform
+ * mount point. `userData` exposes `pilotCameraAnchor`, `sockets` (by name) and `setGearDeploy(t)`.
+ */
+export function buildFuselage(materials) {
+	const fuselage = new THREE.Group();
+	fuselage.name = 'fuselage';
+
+	const body = new THREE.Group();
+	body.name = 'body';
+	body.position.y = FUSELAGE.clearance;
+	fuselage.add(body);
+
+	body.add(buildHull(materials));
+	body.add(buildCockpit(materials));
+	body.add(buildPilot(materials));
+
+	const sockets = buildSockets();
+	for (const socket of Object.values(sockets)) body.add(socket);
+
+	const gears = GEAR_SOCKETS.map(({ name }) => {
+		const socket = sockets[name];
+		const gear = buildLandingGear(materials, { height: FUSELAGE.clearance + socket.position.y });
+		socket.add(gear);
+		return gear;
+	});
+
+	const pilotCameraAnchor = new THREE.Object3D();
+	pilotCameraAnchor.name = 'pilot-camera-anchor';
+	// At the pilot's eyes, inside the helmet (the near plane clips the visor)
+	pilotCameraAnchor.position.set(0, PILOT_HEAD.y + 0.02, PILOT_HEAD.z + 0.07);
+	// A camera looks down its -z: yaw it to face the nose, then pitch slightly down towards the dashboard
+	pilotCameraAnchor.rotation.set(-0.1, Math.PI, 0, 'YXZ');
+	body.add(pilotCameraAnchor);
+
+	fuselage.userData = {
+		pilotCameraAnchor,
+		sockets,
+		setGearDeploy: (t) => gears.forEach((gear) => gear.userData.setDeploy(t)),
+	};
+
+	return fuselage;
+}
+
+/**
+ * Nose section at z, linearly interpolated between the front of the body and the nose tip.
+ */
+function noseSection(z) {
+	const t = (z - FUSELAGE.noseStartZ) / (FUSELAGE.noseTipZ - FUSELAGE.noseStartZ);
+	return lerpSection(BODY, NOSE_TIP, t);
+}
+
+function lerpSection(a, b, t) {
+	const lerp = THREE.MathUtils.lerp;
+	return {
+		halfWidth: lerp(a.halfWidth, b.halfWidth, t),
+		bottom: lerp(a.bottom, b.bottom, t),
+		top: lerp(a.top, b.top, t),
+	};
+}
+
+function grow({ halfWidth, bottom, top }, margin) {
+	return { halfWidth: halfWidth + margin, bottom: bottom - margin, top: top + margin };
+}
+
+/**
+ * Box whose back face (at zBack) and front face (at zFront) have different sections. It is a `BoxGeometry` with its
+ * corners moved, so every face stays planar (the sides only taper in x, the top and bottom are symmetric trapezoids)
+ * and each face keeps its own vertices, giving flat normals.
+ */
+function taperedBox(back, front, zBack, zFront, material) {
+	const geometry = new THREE.BoxGeometry(1, 1, 1);
+	const position = geometry.attributes.position;
+
+	for (let i = 0; i < position.count; i++) {
+		const isFront = position.getZ(i) > 0;
+		const section = isFront ? front : back;
+		position.setXYZ(
+			i,
+			Math.sign(position.getX(i)) * section.halfWidth,
+			position.getY(i) > 0 ? section.top : section.bottom,
+			isFront ? zFront : zBack
+		);
+	}
+	geometry.computeVertexNormals();
+
+	return new THREE.Mesh(geometry, material);
+}
+
+function box(width, height, depth, material) {
+	return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+}
+
+function place(mesh, x, y, z) {
+	mesh.position.set(x, y, z);
+	return mesh;
+}
+
+/**
+ * Hull: tapered tail, rectangular rear body, long wedge nose with red stripes and a sensor tip, plus dark side panels.
+ */
+function buildHull(materials) {
+	const hull = new THREE.Group();
+	hull.name = 'hull';
+	const { tailZ, bodyStartZ, noseStartZ, noseTipZ } = FUSELAGE;
+
+	hull.add(taperedBox(TAIL, BODY, tailZ, bodyStartZ, materials.hullPaint));
+	hull.add(taperedBox(BODY, BODY, bodyStartZ, noseStartZ, materials.hullPaint));
+	hull.add(taperedBox(BODY, NOSE_TIP, noseStartZ, noseTipZ, materials.hullPaint));
+
+	// Nose tip: short dark wedge with a sensor probe
+	const probeTip = { halfWidth: 0.06, bottom: 0.34, top: 0.42 };
+	hull.add(taperedBox(NOSE_TIP, probeTip, noseTipZ, noseTipZ + 0.3, materials.hullDark));
+	const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.35, 10), materials.chrome);
+	probe.rotation.x = Math.PI / 2;
+	hull.add(place(probe, 0, 0.38, noseTipZ + 0.45));
+
+	// Red squadron stripes wrapping the nose, slightly larger than the hull below them
+	for (const [z0, z1] of [
+		[2.2, 2.45],
+		[2.65, 2.8],
+	]) {
+		hull.add(taperedBox(grow(noseSection(z0), 0.01), grow(noseSection(z1), 0.01), z0, z1, materials.hullRed));
+	}
+
+	// Rear plate and dark panels on the sides of the rear body
+	hull.add(place(box(1.0, 0.7, 0.05, materials.hullDark), 0, 0.58, tailZ - 0.02));
+	for (const side of [1, -1]) {
+		hull.add(place(box(0.03, 0.45, 1.4, materials.hullDark), side * (BODY.halfWidth + 0.015), 0.6, -0.9));
+		hull.add(place(box(0.03, 0.12, 2.6, materials.hullRed), side * (BODY.halfWidth + 0.015), 1.0, -2.5));
+	}
+
+	// Raised spine behind the cockpit
+	hull.add(place(box(0.5, 0.08, 1.6, materials.hullDark), 0, BODY.top + 0.04, -2.9));
+
+	return hull;
+}
+
+/**
+ * Faceted canopy (two glass tapered boxes), frame bars, seat and dashboard with emissive screens.
+ */
+function buildCockpit(materials) {
+	const cockpit = new THREE.Group();
+	cockpit.name = 'cockpit';
+
+	const rearZ = -0.5;
+	const midZ = FUSELAGE.noseStartZ;
+	const frontZ = 1.9;
+	const frontBottom = noseSection(frontZ).top;
+
+	const rear = { halfWidth: 0.4, bottom: BODY.top, top: BODY.top + 0.52 };
+	const mid = { halfWidth: 0.44, bottom: BODY.top, top: BODY.top + 0.56 };
+	const front = { halfWidth: 0.1, bottom: frontBottom, top: frontBottom + 0.04 };
+
+	cockpit.add(taperedBox(rear, mid, rearZ, midZ, materials.glass));
+	cockpit.add(taperedBox(mid, front, midZ, frontZ, materials.glass));
+
+	// Rear bulkhead and the frame hoop between both glass sections
+	cockpit.add(
+		place(
+			box(2 * rear.halfWidth, rear.top - rear.bottom, 0.04, materials.hullDark),
+			0,
+			(rear.top + rear.bottom) / 2,
+			rearZ
+		)
+	);
+	const bar = 0.04;
+	const hoopHeight = mid.top - mid.bottom;
+	for (const side of [1, -1]) {
+		cockpit.add(
+			place(
+				box(bar, hoopHeight, bar, materials.hullDark),
+				side * mid.halfWidth,
+				mid.bottom + hoopHeight / 2,
+				midZ
+			)
+		);
+	}
+	cockpit.add(place(box(2 * mid.halfWidth + bar, bar, bar, materials.hullDark), 0, mid.top, midZ));
+
+	// Seat back behind the pilot (the cushion is inside the hull, in the sunken tub)
+	cockpit.add(place(box(0.46, 0.5, 0.08, materials.hullDark), 0, BODY.top + 0.25, -0.4));
+
+	// Dashboard tilted towards the pilot, with two screens and a status light on its face
+	const dashboard = place(box(0.5, 0.2, 0.1, materials.hullDark), 0, BODY.top + 0.14, 0.55);
+	dashboard.rotation.x = -0.5;
+	const faceZ = -0.051;
+	dashboard.add(place(box(0.16, 0.1, 0.005, materials.lampCool), -0.11, 0.02, faceZ));
+	dashboard.add(place(box(0.16, 0.1, 0.005, materials.lampCool), 0.11, 0.02, faceZ));
+	dashboard.add(place(box(0.04, 0.03, 0.005, materials.lampWarm), 0, -0.06, faceZ));
+	cockpit.add(dashboard);
+
+	return cockpit;
+}
+
+/**
+ * Seated pilot facing the nose: orange flight suit, white vest and helmet, dark visor and gloves. The pilot sits low in
+ * a tub sunk into the hull (legs hidden inside), so the helmet clears the canopy. Arms are shoulder → elbow chains.
+ */
+function buildPilot(materials) {
+	const pilot = new THREE.Group();
+	pilot.name = 'pilot';
+	pilot.position.set(0, BODY.top, PILOT_HEAD.z);
+
+	const torsoHeight = 0.45;
+	const torsoBottom = -0.2;
+	const torsoTop = torsoBottom + torsoHeight;
+	pilot.add(place(box(0.36, torsoHeight, 0.22, materials.flightSuit), 0, torsoBottom + torsoHeight / 2, 0));
+	pilot.add(place(box(0.3, 0.2, 0.03, materials.hullPaint), 0, torsoTop - 0.14, 0.12));
+
+	pilot.add(
+		place(
+			new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 12), materials.flightSuit),
+			0,
+			torsoTop + 0.03,
+			0
+		)
+	);
+
+	const headY = PILOT_HEAD.y - BODY.top;
+	pilot.add(place(new THREE.Mesh(new THREE.SphereGeometry(0.12, 20, 14), materials.hullPaint), 0, headY, 0));
+	pilot.add(place(box(0.17, 0.06, 0.03, materials.hullDark), 0, headY + 0.01, 0.105));
+
+	// A limb points down its -y; a negative rotation.x swings it forward (+z)
+	const upperLength = 0.2;
+	const forearmLength = 0.24;
+	const armRadius = 0.045;
+	for (const side of [1, -1]) {
+		const shoulder = new THREE.Group();
+		shoulder.position.set(side * 0.22, torsoTop - 0.05, 0);
+		shoulder.rotation.x = -0.6;
+		shoulder.add(limb(armRadius, upperLength, materials.flightSuit));
+		pilot.add(shoulder);
+
+		const elbow = new THREE.Group();
+		elbow.position.y = -upperLength;
+		elbow.rotation.x = -1.0;
+		elbow.add(limb(armRadius, forearmLength, materials.flightSuit));
+		shoulder.add(elbow);
+
+		const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), materials.hullDark);
+		elbow.add(place(hand, 0, -forearmLength, 0));
+	}
+
+	return pilot;
+}
+
+/**
+ * Cylinder hanging from its top end, so a limb rotates about its joint.
+ */
+function limb(radius, length, material) {
+	return place(new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 12), material), 0, -length / 2, 0);
+}
+
+/**
+ * Named attach points for the parts the crane will mount. Positions are in body space.
+ */
+function buildSockets() {
+	const sockets = {};
+	const add = (name, x, y, z) => {
+		const socket = new THREE.Object3D();
+		socket.name = name;
+		socket.position.set(x, y, z);
+		sockets[name] = socket;
+	};
+
+	const sideX = BODY.halfWidth;
+	add('socket_wing_L', sideX, 0.6, -2.6);
+	add('socket_wing_R', -sideX, 0.6, -2.6);
+	add('socket_thruster_L', 0.4, 0.58, FUSELAGE.tailZ);
+	add('socket_thruster_R', -0.4, 0.58, FUSELAGE.tailZ);
+	add('socket_weapon_L', noseSection(1.6).halfWidth, 0.4, 1.6);
+	add('socket_weapon_R', -noseSection(1.6).halfWidth, 0.4, 1.6);
+
+	// Gear hinges sit just inside the belly
+	for (const { name, z } of GEAR_SOCKETS) {
+		const bottom = z > FUSELAGE.noseStartZ ? noseSection(z).bottom : BODY.bottom;
+		add(name, 0, bottom + 0.04, z);
+	}
+
+	return sockets;
+}
