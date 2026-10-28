@@ -150,7 +150,8 @@ by the fuselage, the wings and the loadout, so every part that offers sockets fo
 `wingVariants.plane`: one fixed panel per side (no opening, `opens: false`) with a 3° dihedral and a dark root fairing.
 The panel is the airfoil variable-shape sweep along a backwards-curving Bézier span path that used to be the X-wing's
 (D-014), so this variant holds the wing entries of the technique register. Params `span`, `tipChord`, `sweep` and
-`rootThickness` all rebuild it. It offers the same top hardpoint as the X-wing (0.9 m from the root, round pad). In the
+`rootThickness` all rebuild it. Both wing variants default to `span` 4 m (range 3.2–5 m) for a longer, more
+dramatic silhouette; they may stick out past the platform deck. It offers the same top hardpoint as the X-wing (0.9 m from the root, round pad). In the
 menu, switching wing type resets the params to the new variant's defaults, rebuilds the "Shape" sliders from its
 `paramSchema`, and hides the open/close button for wings that do not open.
 

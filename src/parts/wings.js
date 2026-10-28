@@ -16,18 +16,18 @@ export const wingVariants = {
 	xwing: {
 		label: 'X-wing S-foils',
 		opens: true,
-		defaults: { span: 3.2 },
+		defaults: { span: 4 },
 		paramSchema: {
-			span: { label: 'Span', min: 2.4, max: 4, step: 0.05 },
+			span: { label: 'Span', min: 3.2, max: 5, step: 0.05 },
 		},
 		build: buildXWing,
 	},
 	plane: {
 		label: 'Plane wing',
 		opens: false,
-		defaults: { span: 3.2, tipChord: 1.0, sweep: 0.6, rootThickness: 0.13 },
+		defaults: { span: 4, tipChord: 1.0, sweep: 0.6, rootThickness: 0.13 },
 		paramSchema: {
-			span: { label: 'Span', min: 2.4, max: 4, step: 0.05 },
+			span: { label: 'Span', min: 3.2, max: 5, step: 0.05 },
 			tipChord: { label: 'Tip chord', min: 0.6, max: 1.6, step: 0.05 },
 			sweep: { label: 'Sweep back', min: 0, max: 1.2, step: 0.05 },
 			rootThickness: { label: 'Root thickness', min: 0.08, max: 0.2, step: 0.01 },

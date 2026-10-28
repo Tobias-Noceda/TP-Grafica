@@ -9,9 +9,10 @@ export default defineConfig({
 	build: {
 		outDir: 'dist', // Personaliza la carpeta de salida del build aquí
 		rolldownOptions: {
-			// Multi-page app: piezas.html se agregará aquí cuando exista
+			// Multi-page app: escena principal y visor de piezas
 			input: {
 				app: resolve(import.meta.dirname, 'app.html'),
+				piezas: resolve(import.meta.dirname, 'piezas.html'),
 			},
 		},
 	},

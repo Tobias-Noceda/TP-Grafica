@@ -120,8 +120,8 @@ src/
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/thrusters.js` (rear engine),
-`parts/weapons.js` (machine gun) and `parts/wings.js` (xwing, plane) exist. The rest (caps module, constant sweep, a
-third wing, second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras, viewer,
+`parts/weapons.js` (machine gun), `parts/wings.js` (xwing, plane) and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep, a
+third wing, second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -339,7 +339,18 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
 
 ### 5.9 Part viewer (`viewer/main.js`)
 
-- Menu: part type → variant → params (from `paramSchema`) → solid/wireframe toggle.
+- Implemented as a **gallery**: every piece laid out in space on a grid under the starfield, with a CSS2D label each.
+  Back row: fuselage + cockpit (fixed), one wing per variant (left side, X-wing shown open). Front row: one weapon and
+  one thruster per variant (thruster nozzle towards the camera), and a landing gear. Pieces come straight from the
+  variant registries, so new variants show up automatically. Each piece stands on y = 0 (`Box3` layout per row).
+- Menu (Tweakpane): View → `focus` (orbit camera onto one piece or all), `wireframe`, `normals`
+  (`VertexNormalsHelper` on every mesh); then one folder per piece with its `paramSchema` sliders (live rebuild,
+  old geometries disposed) and pose sliders (`open` for wings that open, `deploy` for the gear).
+- Wings that open are interactive like in the main scene: clicking them (raycast on `pointerup`, ignored after an
+  orbit drag), the `O` key or the folder's button toggles them with the same eased 1.2 s animation, and the `open`
+  slider follows it.
+- Lights are kept low so the white hull stays under the bloom threshold; only emissive parts glow.
+- Still to add: UV checker texture, a part type → variant picker if the brief needs one beyond the gallery.
 - Wireframe: `material.wireframe = true`, or overlay `LineSegments(new WireframeGeometry(geo))`.
 - Debug helpers: `VertexNormalsHelper` (addon), `AxesHelper`, `GridHelper`. A UV checker texture is useful for
   validating the UVs.
