@@ -11,19 +11,23 @@ import { buildHangar, HANGAR } from '../hangar/hangar.js';
 import { buildPlatform } from '../hangar/platform.js';
 import { buildSpace } from '../scene/space.js';
 import { buildFuselage } from '../parts/fuselage.js';
-import { createLoadout } from './loadout.js';
+import { createLoadout, PART_KINDS } from './loadout.js';
 import { createMenu } from './menu.js';
 
-let container, renderer, scene, camera, controls, composer, bloomPass, space, fuselage;
+let container, renderer, scene, camera, controls, composer, bloomPass, space, fuselage, loadout;
 const clock = new THREE.Clock();
 
 // Ship configuration edited by the menu
 const config = {
+	wing: { variant: 'xwing', params: { ...PART_KINDS.wing.xwing.defaults } },
 	weapon: { variant: 'machineGun', hardpoint: 'nose' },
+	thruster: { variant: 'rearEngine', hardpoint: 'rear' },
 };
 
-// Landing gear animation: `t` moves towards `target` (0 = retracted, 1 = deployed) in `duration` seconds
+// Toggle animations: `t` moves towards `target` in `duration` seconds and is applied with easing.
+// Gear: 0 = retracted, 1 = deployed (T). Wings: 0 = closed, 1 = open in X (O); parked closed.
 const gear = { t: 1, target: 1, duration: 2 };
+const wingFold = { t: 0, target: 0, duration: 1.2 };
 
 function setupThreeJs() {
 	container = document.getElementById('container3D');
@@ -74,10 +78,26 @@ function buildScene() {
 	platform.userData.mountPoint.add(fuselage);
 
 	// Parts are mounted instantly until the crane assembles the ship
-	const loadout = createLoadout(fuselage, materials);
-	const equipWeapon = () => loadout.equip('weapon', config.weapon.variant, config.weapon.hardpoint);
+	loadout = createLoadout(fuselage, materials);
+	const equipWings = () => loadout.equipWings(config.wing.variant, config.wing.params);
+	const equipPart = (kind) => () => {
+		try {
+			loadout.equip(kind, config[kind].variant, config[kind].hardpoint);
+		} catch (error) {
+			console.warn(error.message);
+		}
+	};
+	const equipWeapon = equipPart('weapon');
+	const equipThruster = equipPart('thruster');
+	equipWings();
 	equipWeapon();
-	createMenu(config, { onWeaponChange: equipWeapon });
+	equipThruster();
+	createMenu(config, {
+		onWingChange: equipWings,
+		onWingToggle: () => toggle(wingFold),
+		onWeaponChange: equipWeapon,
+		onThrusterChange: equipThruster,
+	});
 
 	space = buildSpace();
 	scene.add(space.group);
@@ -96,14 +116,19 @@ function onResize() {
 }
 
 function onKeyDown(event) {
-	if (event.code === 'KeyT') gear.target = 1 - gear.target;
+	if (event.code === 'KeyT') toggle(gear);
+	if (event.code === 'KeyO') toggle(wingFold);
 }
 
-function updateGear(dt) {
-	if (gear.t === gear.target) return;
-	const step = dt / gear.duration;
-	gear.t = gear.target > gear.t ? Math.min(gear.t + step, gear.target) : Math.max(gear.t - step, gear.target);
-	fuselage.userData.setGearDeploy(THREE.MathUtils.smoothstep(gear.t, 0, 1));
+function toggle(state) {
+	state.target = 1 - state.target;
+}
+
+function stepToggle(state, dt, apply) {
+	if (state.t === state.target) return;
+	const step = dt / state.duration;
+	state.t = state.target > state.t ? Math.min(state.t + step, state.target) : Math.max(state.t - step, state.target);
+	apply(THREE.MathUtils.smoothstep(state.t, 0, 1));
 }
 
 function animate() {
@@ -112,7 +137,8 @@ function animate() {
 
 	controls.update();
 	space.update(dt);
-	updateGear(dt);
+	stepToggle(gear, dt, (t) => fuselage.userData.setGearDeploy(t));
+	stepToggle(wingFold, dt, (t) => loadout.setWingsOpen(t));
 	composer.render(dt);
 }
 

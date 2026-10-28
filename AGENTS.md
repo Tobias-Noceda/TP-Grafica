@@ -90,7 +90,7 @@ app.html                 main scene entry
 piezas.html              part viewer entry
 public/textures/         imported PBR textures (Poly Haven, CC0) — see CREDITS.md
 src/
-  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, C, 1-6)
+  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, O, C, 1-6)
   app/materials.js       texture loading + shared material library (hangar + ship materials)
   hangar/hangar.js       hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
   hangar/platform.js     central assembly platform (PLATFORM dimensions, mountPoint on the deck)
@@ -98,28 +98,31 @@ src/
   app/crane.js           hierarchical crane + IK-free positional API
   app/assembly.js        state machine for the pick/lift/move/lower/release sequence
   app/cameras.js         6 cameras + switching
-  app/menu.js            Tweakpane UI, top-right (weapon type + position implemented; generate, pause, camera… to add)
-  app/loadout.js         which part kind sits on which hardpoint; equip/unequip with geometry disposal
+  app/menu.js            Tweakpane UI, top-right (wings type/params/open + weapon and thruster type/position; generate, pause, camera… to add)
+  app/loadout.js         wings + which part kind sits on which hardpoint (incl. the wing one); equip/unequip, disposal
   viewer/main.js         piezas.html entry (shares src/parts/*)
   geometry/
     uv.js                world-scale box-projected UVs for tiling textures on boxes
-    sweep.js             revolution generator (implemented); sweep / variable sweep to add when a part needs them
-    frames.js            level matrices from curves (Frenet / parallel transport)
+    sweep.js             revolution + variable-shape sweep (implemented); constant sweep to add when needed
+    frames.js            level matrices from curves ('up' / parallel transport) (implemented)
     caps.js              end caps via ShapeUtils triangulation
     curves.js            bezierChain2, sampleShape (implemented); more factories as needed
   parts/
     fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
-    wings.js             3 variants, each with params
-    thrusters.js         2 variants (body + exhaust zone)
+    wings.js             3 variants, each with params (xwing: primitive S-foils; plane: variable sweep; both top hardpoint)
+    thrusters.js         2 variants (body + exhaust zone); rearEngine implemented (revolution, rear-only)
     weapons.js           2 variants (machineGun implemented: revolution barrel)
     landingGear.js       hierarchical (strut → knee → lowerLeg → wheel), setDeploy(t)
+    sockets.js           shared mountPart / unmountPart / buildPadCover
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
 ```
 
-Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `geometry/uv.js`, `geometry/curves.js`,
-`geometry/sweep.js` (revolution only), `parts/fuselage.js`, `parts/landingGear.js`, `parts/weapons.js` (machine gun),
-`app/loadout.js` and `app/menu.js` (weapon controls only) exist. The rest (frames, caps, sweeps, wings, thrusters,
-second weapon, crane, assembly, cameras, viewer, registry) is still to be written.
+Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
+`geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
+`parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/thrusters.js` (rear engine),
+`parts/weapons.js` (machine gun) and `parts/wings.js` (xwing, plane) exist. The rest (caps module, constant sweep, a
+third wing, second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras, viewer,
+registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
 requires.
@@ -221,9 +224,23 @@ export const wingVariants = {
 - `build()` returns a `Group` whose **origin is the attach point** and whose local axes match the fuselage socket.
   Mounting is then just `socket.add(part)`.
 - Wings: three variants, each with ≥1 geometric param. Rebuild on change and **`geometry.dispose()` the old one**.
+  Variants declare `opens` (whether they expose `userData.setOpen(t)`) and expose `userData.sockets.top`, a hardpoint
+  on the panel near the root (child of the panel/hinge, `side: 'L'` because the wing is already mirrored).
+  `xwing` (default, implemented): per side an upper and a lower flat, squared panel (`slab`, a deformed `BoxGeometry`,
+  no curves) on hinges rotating about z (fairing + chrome pins); param `span`; opens into an X with the `O` key (starts
+  closed). `plane` (implemented): one fixed panel per side, a variable-shape sweep of a Bézier airfoil along a Bézier
+  span path; params `span`, `tipChord`, `sweep`, `rootThickness`.
   The left and right wings may be mirrored copies, using `scale.x = -1` on the parent group. Flip the winding or use
   `side: DoubleSide` when mirroring.
-- Thrusters: two variants, each with a clear **body** and **exhaust** zone. A revolution surface fits well here.
+- Thrusters: two variants, each with a clear **body** and **exhaust** zone. `build(params, materials, { outward })`
+  points the nozzle along `outward`. A variant may declare `hardpoints` (ids it is allowed on);
+  `hardpointsFor(kind, variantId)` and `loadout.equip` honour it. `rearEngine` (implemented, `hardpoints: ['rear']`): one large X-wing style engine filling the tail,
+  short (default 0.9 m) so it barely protrudes, built around its local `+y` in a `nacelle` group. Body: adapter plate,
+  intake ring with ribbed teeth, casing with a groove and a raised red stripe. Exhaust: slatted collar, converging
+  nozzle with a thick lip, a petal cone converging to a small emissive core (`materials.exhaust`) with fan blades and a
+  hub. Casing, nozzle, cone, core and hub are Bézier-profile revolutions split into runs by material (`profileRuns`);
+  params `length`, `nozzleFlare`. Teeth, slats, petals and blades are merged boxes (`radialRing`). The second variant (4 square engines) is planned in
+  `QUAD_THRUSTER_PLAN.md`.
 - Weapons: two variants, made of primitives plus curves. `build(params, materials, { outward, clearance })`: they always fire
   along `+z` with `+y` up, and `outward` (the socket's hull normal) only sets which way the pylon grows (`clearance`, optional per socket, sets its length), so one weapon
   fits side and top hardpoints. They are built for the left side and mirrored with `scale.x = -1` for the right. `machineGun` (implemented) has a Bézier-profile revolution barrel
@@ -239,9 +256,10 @@ export const wingVariants = {
   `pilotCameraAnchor` (already yawed to face `+z`), `sockets` (by name), `setGearDeploy(t)` and
   `mountPart(name, part)` / `unmountPart(name)` (mirrors parts on `R` sockets). Sockets live in the `body` group
   and keep the ship orientation: `socket_wing_L/R`, hardpoint pairs `socket_nose_L/R`, `socket_top_L/R` and
-  `socket_tail_L/R`, and `socket_gear_front/back`. **Hardpoints** (exported `HARDPOINTS`) are positions, not part
-  types: each lists the kinds it `accepts` (nose: weapon, top: weapon + thruster, tail: thruster; wing hardpoints will
-  come from wing parts), and holds one kind at a time. Part sockets store `side`, `outward` (left-side frame) and a
+  `socket_tail_L/R`, the centre `socket_rear` (side `C`, never mirrored), and `socket_gear_front/back`. **Hardpoints** (exported `HARDPOINTS`) are positions, not part
+  types: each lists the kinds it `accepts` (nose: weapon, top: weapon + thruster, tail and rear: thruster; wing
+  hardpoints come from wing parts), and holds one kind at a time. `tail` and `rear` share the tail plate and list each
+  other in `overlaps`, so only one of them can be used; the `socket_rear` cover is a group holding both tail covers. Part sockets store `side`, `outward` (left-side frame) and a
   cover (sibling in `body`, `socket.userData.cover`): hull-paint hatches with a dark seam and bolts on the sides and tail, round red-ringed pads
   on the top fairing. `mountPart` hides the cover and `unmountPart` shows it again.
 - Landing gear (implemented): two gears, front (`z = 2.6`) and back (`z = -2.6`), each with twin wheels. Hierarchy is

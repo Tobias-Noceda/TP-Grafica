@@ -144,5 +144,12 @@ export function createMaterials(renderer) {
 			emissive: 0x6fe8ff,
 			emissiveIntensity: 4,
 		}),
+
+		// Engine throat glow (exhaust zone of the thrusters), picked up by the bloom pass
+		exhaust: new THREE.MeshStandardMaterial({
+			color: 0x000000,
+			emissive: 0xff4a1c,
+			emissiveIntensity: 4.5,
+		}),
 	};
 }
