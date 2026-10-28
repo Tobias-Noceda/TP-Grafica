@@ -9,12 +9,12 @@ The brief asks for **at least one** use of each technique **across the whole shi
 that uses one of them must be listed here, with the file and function, so a future change does not remove the only
 instance by accident. A part's look comes first: use a technique only where it fits the piece naturally.
 
-| Technique                                     | Part / variant                                     | Where                                                                                        | Curves                                                                      | Notes                                                                                                                                                                                |
-| --------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Surface of revolution                         | Weapon `machineGun` (barrel)                       | `src/parts/weapons.js` `barrelProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`   | `CurvePath` of 8 `CubicBezierCurve`s (`bezierChain2`)                       | Jacket → S shoulder → barrel → muzzle bulb → flared crown → face → bore. Sharp knots keep hard edges. Params change the profile.                                                     |
-| Surface of revolution                         | Thruster `rearEngine` (casing, nozzle, cone, core) | `src/parts/thrusters.js` `engineProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry` | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`), one per material run  | Groove, raised stripe, waist, collar, curved converging nozzle (C1 with the collar), thick lip, petal cone to the core. `length` and `nozzleFlare` change the profile.               |
-| Sweep along a curved path (oriented sections) | Wing `plane` (panel)                               | `src/parts/wings.js` `buildPlaneWing` → `src/geometry/sweep.js` `buildVariableSweepGeometry` | `CubicBezierCurve3` span path, frames from `levelMatrices` (`method: 'up'`) | Path leaves the root along +x and curves back to the tip; sections follow its tangent. Subtle: only visible with `sweep > 0` (default 0.6). A clearer dedicated use is still a goal. |
-| Variable-shape sweep                          | Wing `plane` (panel)                               | `src/parts/wings.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`      | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)             | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot.                |
+| Technique                                     | Part / variant                                     | Where                                                                                                    | Curves                                                                      | Notes                                                                                                                                                                                |
+| --------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Surface of revolution                         | Weapon `machineGun` (barrel)                       | `src/parts/weapons/machineGun.js` `barrelProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`    | `CurvePath` of 8 `CubicBezierCurve`s (`bezierChain2`)                       | Jacket → S shoulder → barrel → muzzle bulb → flared crown → face → bore. Sharp knots keep hard edges. Params change the profile.                                                     |
+| Surface of revolution                         | Thruster `rearEngine` (casing, nozzle, cone, core) | `src/parts/propulsors/rearEngine.js` `engineProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry` | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`), one per material run  | Groove, raised stripe, waist, collar, curved converging nozzle (C1 with the collar), thick lip, petal cone to the core. `length` and `nozzleFlare` change the profile.               |
+| Sweep along a curved path (oriented sections) | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `buildPlaneWing` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | `CubicBezierCurve3` span path, frames from `levelMatrices` (`method: 'up'`) | Path leaves the root along +x and curves back to the tip; sections follow its tangent. Subtle: only visible with `sweep > 0` (default 0.6). A clearer dedicated use is still a goal. |
+| Variable-shape sweep                          | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`        | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)             | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot.                |
 
 **Does not count** (kept here so nobody relies on it):
 
@@ -22,7 +22,7 @@ instance by accident. A part's look comes first: use a technique only where it f
   decoration, not a ship part, and not our generator.
 - Fuselage tapered boxes (`src/parts/fuselage.js` `taperedBox`): deformed `BoxGeometry`, no curves. The fuselage is
   fixed, not an interchangeable part.
-- X-wing wing panels (`src/parts/wings.js` `slab`): deformed `BoxGeometry`, no curves (D-014).
+- X-wing wing panels (`src/parts/wings/xWingSFoils.js` `slab`): deformed `BoxGeometry`, no curves (D-014).
 
 ## 2. Decision log
 
@@ -172,3 +172,13 @@ for later in `QUAD_THRUSTER_PLAN.md`.
 - Body vs exhaust: white casing with a dark groove and a raised red stripe; dark slatted collar and white nozzle. Seen
   from behind it follows the reference: a thick white lip, a cone of white petals converging inwards, and a small
   emissive orange core (`materials.exhaust`, intensity 4.5, caught by the bloom) behind a fan of dark blades and a hub.
+
+### D-020 One file per variant, one map file per part kind
+
+`src/parts/wings.js`, `weapons.js` and `thrusters.js` only expose the id → variant map (`wingVariants`,
+`weaponVariants`, `thrusterVariants`) that the loadout, menu and viewer read. Each variant is coded in its own
+descriptive file and exports its variant object (`label`, `defaults`, `paramSchema`, `build`, plus `opens` /
+`hardpoints` when it has them): `wings/xWingSFoils.js`, `wings/planeWing.js`, `weapons/machineGun.js` and
+`propulsors/rearEngine.js`. Code shared by the variants of one kind goes in that folder's `common.js` (today
+`wings/common.js`: root chord, fairing, top hardpoint). A variant file reads its own local `defaults`, never the map,
+so the map can import every variant without circular imports. Adding a variant = new file + one line in the map.

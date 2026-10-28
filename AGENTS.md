@@ -109,9 +109,13 @@ src/
     curves.js            bezierChain2, sampleShape (implemented); more factories as needed
   parts/
     fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
-    wings.js             3 variants, each with params (xwing: primitive S-foils; plane: variable sweep; both top hardpoint)
-    thrusters.js         2 variants (body + exhaust zone); rearEngine implemented (revolution, rear-only)
-    weapons.js           2 variants (machineGun implemented: revolution barrel)
+    wings.js             wingVariants map only (3 variants planned, each with params)
+    wings/               one file per variant: xWingSFoils.js (primitive S-foils), planeWing.js (variable sweep),
+                         common.js (root chord, fairing, top hardpoint shared by the wings)
+    thrusters.js         thrusterVariants map only (2 variants, body + exhaust zone)
+    propulsors/          one file per thruster variant: rearEngine.js (revolution, rear-only)
+    weapons.js           weaponVariants map only (2 variants)
+    weapons/             one file per weapon variant: machineGun.js (revolution barrel)
     landingGear.js       hierarchical (strut → knee → lowerLeg → wheel), setDeploy(t)
     sockets.js           shared mountPart / unmountPart / buildPadCover
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
@@ -119,8 +123,8 @@ src/
 
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
-`parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/thrusters.js` (rear engine),
-`parts/weapons.js` (machine gun), `parts/wings.js` (xwing, plane) and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep, a
+`parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/rearEngine.js`,
+`parts/weapons/machineGun.js`, `parts/wings/` (xwing, plane) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep, a
 third wing, second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras,
 registry) is still to be written.
 
@@ -211,14 +215,19 @@ and UVs and can show the algorithm.
 
 ### 5.4 Parts (`parts/*.js`)
 
+Each kind has a map file (`wings.js`, `weapons.js`, `thrusters.js`) that only lists its variants by id, and one file
+per variant in its folder (`wings/`, `weapons/`, `propulsors/`), named after the variant and exporting its variant
+object. Shared code for one kind goes in that folder's `common.js`. Variant files use their own `defaults`, never the
+map (no circular imports). See D-020.
+
 Each variant exports a builder with a uniform contract:
 
 ```js
-export const wingVariants = {
-    delta:   { label, defaults: { sweepAngle, thickness, ... }, paramSchema, build(params, material) → THREE.Group },
-    curved:  { ... },
-    ring:    { ... },
-};
+// parts/wings/planeWing.js
+export const planeWing = { label, opens, defaults: { span, tipChord, ... }, paramSchema, build(params, materials) → THREE.Group };
+
+// parts/wings.js
+export const wingVariants = { xwing: xWingSFoils, plane: planeWing };
 ```
 
 - `build()` returns a `Group` whose **origin is the attach point** and whose local axes match the fuselage socket.
