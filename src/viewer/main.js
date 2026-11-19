@@ -25,7 +25,8 @@ let container, renderer, labelRenderer, scene, camera, controls, composer, bloom
 const clock = new THREE.Clock();
 const gallery = new THREE.Group();
 const normalsHelpers = new THREE.Group();
-const view = { wireframe: false, normals: false, focus: 'all' };
+const view = { wireframe: false, normals: false, uvChecker: false, focus: 'all' };
+let uvCheckerMaterial = null;
 
 /**
  * Pieces on display. Variants come from the same `src/parts/*` registries as the main scene; `params` is edited by the
@@ -160,6 +161,7 @@ function rebuild(piece, relayout = true) {
 	piece.holder.add(piece.object);
 	applyPose(piece);
 	applyTechniqueView(piece);
+	applyUvChecker(piece.object);
 	if (relayout) layout();
 	updateNormals();
 }
@@ -238,9 +240,65 @@ function focus(id) {
 }
 
 function setWireframe(enabled) {
-	for (const material of Object.values(materials)) {
-		if (material.isMaterial) material.wireframe = enabled;
+	for (const material of [...Object.values(materials), uvCheckerMaterial]) {
+		if (material?.isMaterial) material.wireframe = enabled;
 	}
+}
+
+/**
+ * UV checker: swaps every mesh's material for one textured with `buildUvCheckerTexture`, or puts the real one back
+ * (kept in `userData.realMaterial`). Shows whether the generated UVs are continuous, undistorted and seamed where
+ * expected.
+ */
+function applyUvChecker(root) {
+	uvCheckerMaterial ??= new THREE.MeshStandardMaterial({
+		map: buildUvCheckerTexture(),
+		roughness: 0.8,
+		wireframe: view.wireframe,
+	});
+	root.traverse((child) => {
+		if (!child.isMesh) return;
+		if (view.uvChecker) {
+			child.userData.realMaterial ??= child.material;
+			child.material = uvCheckerMaterial;
+		} else if (child.userData.realMaterial) {
+			child.material = child.userData.realMaterial;
+			delete child.userData.realMaterial;
+		}
+	});
+}
+
+/**
+ * 8×8 checker on a canvas: light/dark cells tinted by u (red) and v (green), with each cell's column and row written
+ * in it, so stretching, flipped directions and seams are easy to spot.
+ */
+function buildUvCheckerTexture() {
+	const size = 512;
+	const cells = 8;
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = size;
+	const context = canvas.getContext('2d');
+	const step = size / cells;
+	context.font = `${step * 0.32}px sans-serif`;
+	context.textAlign = 'center';
+	context.textBaseline = 'middle';
+	for (let i = 0; i < cells; i++) {
+		for (let j = 0; j < cells; j++) {
+			// Canvas rows go down, v goes up: row j from the top is v cell (cells - 1 - j)
+			const u = i / (cells - 1);
+			const v = (cells - 1 - j) / (cells - 1);
+			const light = (i + j) % 2 === 0 ? 210 : 90;
+			context.fillStyle = `rgb(${Math.round(light * (0.55 + 0.45 * u))}, ${Math.round(light * (0.55 + 0.45 * v))}, ${light})`;
+			context.fillRect(i * step, j * step, step, step);
+			context.fillStyle = light > 128 ? '#111' : '#eee';
+			context.fillText(`${i},${cells - 1 - j}`, (i + 0.5) * step, (j + 0.5) * step);
+		}
+	}
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.colorSpace = THREE.SRGBColorSpace;
+	texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+	texture.anisotropy = 4;
+	return texture;
 }
 
 /**
@@ -319,6 +377,9 @@ function createMenu() {
 	const focusOptions = { 'All pieces': 'all', ...Object.fromEntries(pieces.map((p) => [p.label, p.id])) };
 	display.addBinding(view, 'focus', { label: 'focus', options: focusOptions }).on('change', () => focus(view.focus));
 	display.addBinding(view, 'wireframe').on('change', () => setWireframe(view.wireframe));
+	display.addBinding(view, 'uvChecker', { label: 'uv checker' }).on('change', () => {
+		for (const piece of pieces) applyUvChecker(piece.object);
+	});
 	display.addBinding(view, 'normals').on('change', updateNormals);
 
 	for (const piece of pieces) {

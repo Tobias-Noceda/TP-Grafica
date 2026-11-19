@@ -46,15 +46,18 @@ export const HARDPOINTS = {
 // Depth of the dark plate on the tail; the thruster sockets sit on its outer face
 const REAR_PLATE_DEPTH = 0.05;
 
+// Tricycle landing gear: one centred nose gear and two main gears under the body sides. The main gears' twin wheels
+// (x ≈ 0.17–0.73) stay inside the body half-width (0.75) when retracted and miss the platform ribs (x = 0, ±2.2).
 const GEAR_SOCKETS = [
-	{ name: 'socket_gear_front', z: 2.6 },
-	{ name: 'socket_gear_back', z: -2.6 },
+	{ name: 'socket_gear_front', x: 0, z: 2.6 },
+	{ name: 'socket_gear_back_L', x: 0.45, z: -2.6 },
+	{ name: 'socket_gear_back_R', x: -0.45, z: -2.6 },
 ];
 
 /**
- * Builds the fuselage with cockpit, pilot, sockets and two landing gears (front and back).
+ * Builds the fuselage with cockpit, pilot, sockets and a tricycle landing gear (nose gear + two main gears).
  *
- * The origin is the ground contact point between both gears, so the fuselage can be added directly to the platform
+ * The origin is on the ground, centred between the front and back gears, so the fuselage can be added directly to the platform
  * mount point. `userData` exposes `pilotCameraAnchor`, `sockets` (by name), `setGearDeploy(t)`, and
  * `mountPart(socketName, part)` / `unmountPart(socketName)`, which also hide or show that socket's cover and mirror
  * parts mounted on the right side.
@@ -418,9 +421,9 @@ function buildSockets(materials) {
 	covers.push(rearCover);
 
 	// Gear hinges sit just inside the belly
-	for (const { name, z } of GEAR_SOCKETS) {
+	for (const { name, x, z } of GEAR_SOCKETS) {
 		const bottom = z > FUSELAGE.noseStartZ ? noseSection(z).bottom : BODY.bottom;
-		add(name, 0, bottom + 0.04, z);
+		add(name, x, bottom + 0.04, z);
 	}
 
 	return { sockets, covers };

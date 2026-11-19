@@ -49,13 +49,14 @@ export function sampleShape(curvePath, segmentsPerCurve) {
  * sits in the middle of a flat side), the other 3 sides, and 4 quarter-round corners (circle approximation,
  * k ≈ 0.5523). Always the same sub-curve count, so it can morph inside a variable-shape sweep. Sides and corners join
  * C1. `radius` must stay above 0 and below min(halfWidth, halfHeight): a zero-length piece has no tangent (no normal).
+ * `center` (optional `Vector2`) moves the rectangle off the origin.
  */
-export function roundedRectangle(halfWidth, halfHeight, radius) {
+export function roundedRectangle(halfWidth, halfHeight, radius, center = new THREE.Vector2()) {
 	const w = halfWidth;
 	const h = halfHeight;
 	const r = radius;
 	const k = 0.5523 * r;
-	const v = (x, y) => new THREE.Vector2(x, y);
+	const v = (x, y) => new THREE.Vector2(x + center.x, y + center.y);
 	const line = (a, b) => [a.clone().lerp(b, 1 / 3), a.clone().lerp(b, 2 / 3), b];
 
 	const start = v(0, -h);

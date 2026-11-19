@@ -20,6 +20,7 @@ instance by accident. A part's look comes first: use a technique only where it f
 | Variable-shape sweep                          | Wing `tie` (whole wing: neck → flare → wing)                               | `src/parts/wings/tieInterceptor.js` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`                      | 11 `CubicBezierCurve`s per section (`bezierChain2`)                                                                              | **Main use.** Starts as a rectangle flush on the hull and ends as the full wing outline (half-octagon back extended forward into two daggers, curved notch edges). Different start and end shapes (D-021).                 |
 | Variable-shape sweep                          | Thruster `quadBlock` (each of the 4 cells: intake → casing → nozzle)       | `src/parts/propulsors/quadBlock.js` `buildCell` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`          | `roundedRectangle` (`src/geometry/curves.js`): 9 `CubicBezierCurve`s per section                                                 | Square intake widening to the casing, then the nozzle morphs square → rounded square / circle (corner radius grows, sides even out). `roundness`, `nozzleFlare`, `length`, `gap` rebuild it (D-023).                       |
 | Variable-shape sweep                          | Wing `plane` (panel)                                                       | `src/parts/wings/planeWing.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`                           | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)                                                                  | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot. Secondary: same airfoil family at both ends (D-021). |
+| Variable-shape sweep                          | Wing `xwing` (each S-foil panel)                                           | `src/parts/wings/xWingSFoils.js` `buildPanelGeometries` → `src/geometry/sweep.js` `buildVariableSweepGeometry`              | `roundedRectangle` (`src/geometry/curves.js`): 9 `CubicBezierCurve`s per section                                                 | Squared section with softened edges; chord (2.0 → 1.5 m), its centre and thickness (0.16 → 0.08 m) taper at different rates along a straight path. Secondary use (D-014).                                                  |
 
 **Does not count** (kept here so nobody relies on it):
 
@@ -27,7 +28,6 @@ instance by accident. A part's look comes first: use a technique only where it f
   decoration, not a ship part, and not our generator.
 - Fuselage tapered boxes (`src/parts/fuselage.js` `taperedBox`): deformed `BoxGeometry`, no curves. The fuselage is
   fixed, not an interchangeable part.
-- X-wing wing panels (`src/parts/wings/xWingSFoils.js` `slab`): deformed `BoxGeometry`, no curves (D-014).
 - TIE wing red plates and white struts/hub (`src/parts/wings/tieInterceptor.js` `buildOuterFace`, `buildStruts`):
   `ExtrudeGeometry` flat plates and primitives, details on top of the sweep.
 
@@ -41,7 +41,8 @@ planar faces and flat normals), boxes, cylinders and spheres. The required techn
 ### D-002 Fuselage rests on the platform deck
 
 `platform.userData.mountPoint` is at the deck surface (`PLATFORM.deckHeight = 0.3`), not on the rail tops, so the
-landing gear wheels stand on the deck. The centre rib passes between each pair of twin wheels.
+landing gear wheels stand on the deck. The centre rib passes between the nose gear's twin wheels; the main gears' wheels
+sit between the centre rib and the ±2.2 m ribs (D-024).
 
 ### D-003 Matte hull and faint glass reflections
 
@@ -122,16 +123,19 @@ edits a plain `config` object and calls back into `main.js`. The options come fr
 (only `Machine gun`) and position (`Nose sides`, default, or `Top (rear)`). For the comparison with the course demo's
 dat.gui menu, see `docs/menu-libraries.md`.
 
-### D-014 X-wing S-foils: simple, squared, built from primitives
+### D-014 X-wing S-foils: simple, squared panels
 
 `wingVariants.xwing` (the default wing): on each side an upper and a lower panel hinged at the root (dark fairing,
 chrome hinge pins along z) that open into an "X". Unlike the real X-wing, there are no fixed engines or wing-tip
 cannons. Weapons and thrusters stay interchangeable through hardpoints.
 
-The first version used the curved, variable-shape sweep for these panels, which made the X-wing too complex. Each panel
-is now a flat, squared `slab`: a `BoxGeometry` with its corners moved, slightly tapered with planar faces and flat
-normals. A slightly larger red slab forms the stripe. No surface technique is used. The brief still needs a geometric
-param per wing, so `span` is kept and rebuilds the slabs. The lower panel is the upper one flipped (`scale.y = -1`).
+The first version used the curved, variable-shape sweep for these panels, which made the X-wing too complex. They
+then became flat `slab`s (a `BoxGeometry` with moved corners), but the brief only allows primitives for details, so a
+main part built from boxes was a risk. Each panel is now a simple variable-shape sweep along a straight path: a
+`roundedRectangle` section (squared, edges softened with a corner radius of half the local thickness) whose chord, chord
+centre and thickness taper at different rates from root to tip, keeping the squared look. The same sweep is split into
+white / red / white runs for the stripe, with end caps at the root and tip. The geometric param stays `span`, which
+rebuilds the sweep. The lower panel is the upper one flipped (`scale.y = -1`).
 
 ### D-015 Wing hardpoint lives in the wing
 
@@ -271,3 +275,11 @@ Second weapon (`weaponVariants.minigun`, `weapons/minigun.js`), inspired by an M
   overlap (`takenHardpoints` in `app/menu.js`), and refreshes when the other kind moves. A scripted check of
   every wing × open/closed × weapon hardpoint × thruster hardpoint combination found no gun/thruster mesh boxes
   intersecting.
+
+### D-024 Tricycle landing gear
+
+Two centre-line gears (front and back, twin wheels 0.44 m apart) read as a bicycle under a ~9 m ship with wide wings,
+not as "apoyos suficientes". The gear is now a tricycle: the centred nose gear (`socket_gear_front`, z = 2.6) and two
+main gears under the body sides (`socket_gear_back_L/R`, x = ±0.45, z = -2.6), all built by the same
+`buildLandingGear` and driven together by `setGearDeploy`. The main gears' twin wheels span x ≈ 0.17–0.73, so they stay
+inside the body half-width (0.75) when retracted and miss the platform deck ribs.

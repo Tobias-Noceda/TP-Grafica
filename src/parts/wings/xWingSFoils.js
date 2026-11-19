@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { roundedRectangle } from '../../geometry/curves.js';
+import { buildVariableSweepGeometry } from '../../geometry/sweep.js';
 import { HARDPOINT_SPAN, ROOT_CENTER_Z, ROOT_CHORD, addTopHardpoint, buildFairing } from './common.js';
 
 const defaults = { span: 4 };
@@ -20,16 +22,17 @@ export const xWingSFoils = {
 const HINGE = { x: 0.12, y: 0.22 }; // hinge pins, relative to the fuselage socket
 const OPEN_ANGLE = THREE.MathUtils.degToRad(14);
 
-// Squared slab panel: root and tip sections as { lead, trail, half } (leading/trailing edge z, half thickness)
-const SLAB_ROOT = { lead: 0.8, trail: -1.2, half: 0.08 };
-const SLAB_TIP = { lead: 0.5, trail: -1.0, half: 0.04 };
-const SLAB_STRIPE = [0.6, 0.75]; // red band, as span fractions
+// Squared panel: root and tip sections as { lead, trail, half } (leading/trailing edge z, half thickness)
+const PANEL_ROOT = { lead: 0.8, trail: -1.2, half: 0.08 };
+const PANEL_TIP = { lead: 0.5, trail: -1.0, half: 0.04 };
+const PANEL_STRIPE = [0.6, 0.75]; // red band, as span fractions
+const EDGE_ROUND = 0.5; // section corner radius, as a fraction of the local half thickness
 
 /**
  * No fixed engines or cannons; instead the upper panel carries a hardpoint on its top surface near the fuselage.
  *
- * Built only from primitives: each panel is a `slab` (a `BoxGeometry` with its corners moved), so no surface technique
- * is used here. The geometric param `span` rebuilds the slabs.
+ * Each panel is a variable-shape sweep (see `buildPanelGeometries`): a squared section with softened edges whose chord
+ * and thickness taper at different rates from root to tip. The geometric param `span` rebuilds it.
  *
  * Hierarchy: wing → hinge fairing + pins, upperHinge / lowerHinge (rotate about z) → panel meshes, plus the hardpoint
  * socket and its pad cover on the upper hinge, so mounted parts follow the panel.
@@ -50,18 +53,10 @@ function buildXWing(params, materials) {
 		wing.add(pin);
 	}
 
-	const section = (t, margin = 0) => {
-		const lerp = (key) => THREE.MathUtils.lerp(SLAB_ROOT[key], SLAB_TIP[key], t);
-		return { lead: lerp('lead') + margin, trail: lerp('trail') - margin, half: lerp('half') + margin };
-	};
-	const [s0, s1] = SLAB_STRIPE;
-	const pieces = [
-		{ geometry: slab(section(0), section(1), 0, span), material: materials.hullPaint },
-		{
-			geometry: slab(section(s0, 0.008), section(s1, 0.008), s0 * span, s1 * span),
-			material: materials.hullRed,
-		},
-	];
+	const pieces = buildPanelGeometries(span).map(({ geometry, material }) => ({
+		geometry,
+		material: materials[material],
+	}));
 
 	const upperHinge = buildHinge(pieces, HINGE.y);
 	upperHinge.name = 'upper-hinge';
@@ -73,7 +68,7 @@ function buildXWing(params, materials) {
 	lowerHinge.children[0].scale.y = -1;
 	wing.add(lowerHinge);
 
-	const hardpoint = section(HARDPOINT_SPAN / span);
+	const hardpoint = panelSection(HARDPOINT_SPAN / span);
 	const socket = addTopHardpoint(
 		upperHinge,
 		new THREE.Vector3(HARDPOINT_SPAN, hardpoint.half, (hardpoint.lead + hardpoint.trail) / 2),
@@ -100,32 +95,58 @@ function buildHinge(pieces, y) {
 
 	const panel = new THREE.Group();
 	panel.name = 'panel';
-	for (const { geometry, material } of pieces) panel.add(new THREE.Mesh(geometry, material));
+	for (const { geometry, material } of pieces) {
+		const mesh = new THREE.Mesh(geometry, material);
+		// Tagged so the part viewer can show the technique on its own
+		mesh.userData.technique = 'variableSweep';
+		panel.add(mesh);
+	}
 	hinge.add(panel);
 
 	return hinge;
 }
 
 /**
- * Flat wing slab from x0 (root side) to x1 (tip side): a `BoxGeometry` whose corners are moved to the given sections.
- * Each face stays planar (the leading and trailing edge faces are symmetric in y, top and bottom contain the z edges),
- * and every face keeps its own vertices, so the normals are flat.
+ * Panel section at span fraction t: { lead, trail, half }, lerped root → tip.
  */
-function slab(root, tip, x0, x1) {
-	const geometry = new THREE.BoxGeometry(1, 1, 1);
-	const position = geometry.attributes.position;
+function panelSection(t) {
+	const lerp = (key) => THREE.MathUtils.lerp(PANEL_ROOT[key], PANEL_TIP[key], t);
+	return { lead: lerp('lead'), trail: lerp('trail'), half: lerp('half') };
+}
 
-	for (let i = 0; i < position.count; i++) {
-		const isTip = position.getX(i) > 0;
-		const section = isTip ? tip : root;
-		position.setXYZ(
-			i,
-			isTip ? x1 : x0,
-			Math.sign(position.getY(i)) * section.half,
-			position.getZ(i) > 0 ? section.lead : section.trail
-		);
-	}
-	geometry.computeVertexNormals();
-
-	return geometry;
+/**
+ * Panel surfaces, from the hinge (x = 0) to the tip (x = span): one variable-shape sweep along a straight `LineCurve3`
+ * on +x, split into material runs (white, red band, white) with `vStart`/`vEnd` so the sections match at the
+ * boundaries; the root and tip runs get the end caps.
+ *
+ * The section is a `roundedRectangle` (chord along z, thickness along y) with corner radius `EDGE_ROUND` × half
+ * thickness. Chord (2.0 → 1.5 m), its centre and thickness (0.16 → 0.08 m) change at different rates, so the section
+ * shape changes along the span, not just its scale. Frames use `up` = +y: section x ↦ -z, section y ↦ +y.
+ */
+function buildPanelGeometries(span) {
+	const shapeAt = (v) => {
+		const { lead, trail, half } = panelSection(v);
+		const center = new THREE.Vector2(-(lead + trail) / 2, 0);
+		return roundedRectangle((lead - trail) / 2, half, EDGE_ROUND * half, center);
+	};
+	const path = new THREE.LineCurve3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(span, 0, 0));
+	const [s0, s1] = PANEL_STRIPE;
+	const runs = [
+		{ from: 0, to: s0, material: 'hullPaint', caps: { start: true, end: false } },
+		{ from: s0, to: s1, material: 'hullRed', caps: { start: false, end: false } },
+		{ from: s1, to: 1, material: 'hullPaint', caps: { start: false, end: true } },
+	];
+	return runs.map(({ from, to, material, caps }) => ({
+		material,
+		geometry: buildVariableSweepGeometry({
+			shapeAt,
+			path,
+			segmentsPerCurve: 3,
+			levels: Math.max(2, Math.round((to - from) * 12)),
+			vStart: from,
+			vEnd: to,
+			caps,
+			up: new THREE.Vector3(0, 1, 0),
+		}),
+	}));
 }

@@ -108,7 +108,7 @@ src/
     caps.js              end caps via ShapeUtils triangulation
     curves.js            bezierChain2, sampleShape (implemented); more factories as needed
   parts/
-    fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
+    fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 3 gears (tricycle)
     wings.js             wingVariants map only (3 variants, each with params)
     wings/               one file per variant: xWingSFoils.js (primitive S-foils), planeWing.js (variable sweep),
                          tieInterceptor.js (variable sweep: hull rectangle → wing outline),
@@ -238,8 +238,8 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
 - Wings: three variants, each with ≥1 geometric param. Rebuild on change and **`geometry.dispose()` the old one**.
   Variants declare `opens` (whether they expose `userData.setOpen(t)`) and expose `userData.sockets.top`, a hardpoint
   on the panel near the root (child of the panel/hinge, `side: 'L'` because the wing is already mirrored).
-  `xwing` (default, implemented): per side an upper and a lower flat, squared panel (`slab`, a deformed `BoxGeometry`,
-  no curves) on hinges rotating about z (fairing + chrome pins); param `span`; opens into an X with the `O` key (starts
+  `xwing` (default, implemented): per side an upper and a lower squared panel (variable-shape sweep of a tapering
+  `roundedRectangle` along a straight path, `buildPanelGeometries`) on hinges rotating about z (fairing + chrome pins); param `span`; opens into an X with the `O` key (starts
   closed). `plane` (implemented): one fixed panel per side, a variable-shape sweep of a Bézier airfoil along a Bézier
   span path; params `span`, `tipChord`, `sweep`, `rootThickness`. `tie` (implemented, TIE Interceptor inspired, static):
   the whole wing is one variable-shape sweep whose section goes from a rectangle flush on the hull to the full wing
@@ -280,13 +280,14 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
   `pilotCameraAnchor` (already yawed to face `+z`), `sockets` (by name), `setGearDeploy(t)` and
   `mountPart(name, part)` / `unmountPart(name)` (mirrors parts on `R` sockets). Sockets live in the `body` group
   and keep the ship orientation: `socket_wing_L/R`, hardpoint pairs `socket_nose_L/R`, `socket_top_L/R` and
-  `socket_tail_L/R`, the centre `socket_rear` (side `C`, never mirrored), and `socket_gear_front/back`. **Hardpoints** (exported `HARDPOINTS`) are positions, not part
+  `socket_tail_L/R`, the centre `socket_rear` (side `C`, never mirrored), and `socket_gear_front` / `socket_gear_back_L/R`. **Hardpoints** (exported `HARDPOINTS`) are positions, not part
   types: each lists the kinds it `accepts` (nose: weapon, top: weapon + thruster, tail and rear: thruster; wing
   hardpoints come from wing parts), and holds one kind at a time. `tail` and `rear` share the tail plate and list each
   other in `overlaps`, so only one of them can be used; the `socket_rear` cover is a group holding both tail covers. Part sockets store `side`, `outward` (left-side frame) and a
   cover (sibling in `body`, `socket.userData.cover`): hull-paint hatches with a dark seam and bolts on the sides and tail, round red-ringed pads
   on the top fairing. `mountPart` hides the cover and `unmountPart` shows it again.
-- Landing gear (implemented): two gears, front (`z = 2.6`) and back (`z = -2.6`), each with twin wheels. Hierarchy is
+- Landing gear (implemented): tricycle, a centred nose gear (`z = 2.6`) and two main gears (`x = ±0.45`, `z = -2.6`),
+  each with twin wheels (D-024). Hierarchy is
   `root (socket) → strut → knee → lowerLeg → wheel`, with chrome joint pins on every pivot.
   `buildLandingGear(materials, { height, foldDirection })` sizes the legs so the wheels touch `y = -height` when
   deployed. `setDeploy(t ∈ [0,1])` rotates the strut and knee. `main.js` animates `t` with `smoothstep` over 2 s, and
@@ -359,7 +360,7 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
   the origin. It has a recessed ribbed deck, perimeter rails with emissive side lamps, corner clamp blocks, a yellow floor outline, and a
   power console at `x ≈ -7.2` whose two cables are `TubeGeometry` swept along `CatmullRomCurve3`s. The fuselage attaches
   to `platform.userData.mountPoint`, an `Object3D` at the centre of the deck surface (`y = deckHeight = 0.3`). The
-  gear wheels stand on the deck, between the ribs (the centre rib runs between each pair of twin wheels).
+  gear wheels stand on the deck, between the ribs (the centre rib runs between the nose gear's twin wheels).
 
 ### 5.9 Part viewer (`viewer/main.js`)
 
@@ -376,7 +377,9 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
 - Pieces whose builder tags meshes with `userData.technique` (today the TIE wing's variable sweep) get a **sweep only**
   checkbox in their folder: it hides the untagged meshes and focuses the piece. Tag new technique meshes the same way.
 - Lights are kept low so the white hull stays under the bloom threshold; only emissive parts glow.
-- Still to add: UV checker texture, a part type → variant picker if the brief needs one beyond the gallery.
+- View → `uv checker` swaps every mesh's material for a canvas checker (cells tinted by u/v and labelled), restored
+  when off and re-applied on rebuild, to validate the generated UVs.
+- Still to add: a part type → variant picker if the brief needs one beyond the gallery.
 - Wireframe: `material.wireframe = true`, or overlay `LineSegments(new WireframeGeometry(geo))`.
 - Debug helpers: `VertexNormalsHelper` (addon), `AxesHelper`, `GridHelper`. A UV checker texture is useful for
   validating the UVs.
