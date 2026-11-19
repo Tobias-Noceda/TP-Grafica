@@ -114,7 +114,8 @@ src/
                          tieInterceptor.js (variable sweep: hull rectangle → wing outline),
                          common.js (root chord, fairing, top hardpoint shared by the wings)
     thrusters.js         thrusterVariants map only (2 variants, body + exhaust zone)
-    propulsors/          one file per thruster variant: rearEngine.js (revolution, rear-only)
+    propulsors/          one file per thruster variant: rearEngine.js (revolution; rear, top, wing), quadBlock.js (2×2 variable-sweep block, rear-only),
+                         common.js (engine nacelle, radialRing)
     weapons.js           weaponVariants map only (2 variants)
     weapons/             one file per weapon variant: machineGun.js (revolution barrel), minigun.js (revolution
                          barrels + housing, curved-sweep feed chute, wing/top only), common.js (pylon, helpers)
@@ -125,9 +126,9 @@ src/
 
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
-`parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/rearEngine.js`,
+`parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/` (rearEngine, quadBlock),
 `parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
-second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, crane, assembly, cameras,
+crane, assembly, cameras,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -248,13 +249,18 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
   `side: DoubleSide` when mirroring.
 - Thrusters: two variants, each with a clear **body** and **exhaust** zone. `build(params, materials, { outward })`
   points the nozzle along `outward`. A variant may declare `hardpoints` (ids it is allowed on);
-  `hardpointsFor(kind, variantId)` and `loadout.equip` honour it. `rearEngine` (implemented, `hardpoints: ['rear']`): one large X-wing style engine filling the tail,
-  short (default 0.9 m) so it barely protrudes, built around its local `+y` in a `nacelle` group. Body: adapter plate,
+  `hardpointsFor(kind, variantId)` and `loadout.equip` honour it. `rearEngine` (implemented, label "Engine", `hardpoints: ['rear', 'top', 'wing']`): one large X-wing style engine filling the tail,
+  short (default 0.9 m) so it barely protrudes, built around its local `+y` in a `nacelle` group (`buildEngineNacelle` in `propulsors/common.js`). Body: adapter plate,
   intake ring with ribbed teeth, casing with a groove and a raised red stripe. Exhaust: slatted collar, converging
   nozzle with a thick lip, a petal cone converging to a small emissive core (`materials.exhaust`) with fan blades and a
   hub. Casing, nozzle, cone, core and hub are Bézier-profile revolutions split into runs by material (`profileRuns`);
-  params `length`, `nozzleFlare`. Teeth, slats, petals and blades are merged boxes (`radialRing`). The second variant (4 square engines) is planned in
-  `QUAD_THRUSTER_PLAN.md`.
+  params `length`, `nozzleFlare`. Teeth, slats, petals and blades are merged boxes (`radialRing`). On top and wing hardpoints the same engine lies on holders, nozzle backwards, with a nose
+  cone: one full-size engine shared by the top pair (built by the left socket at `toPairCentre`), and a smaller one
+  per wing (`WING_SCALE` 0.45, fits every wing incl. the TIE neck; D-023). The menu hides positions taken by the
+  other part kind.
+  `quadBlock` (implemented, `hardpoints: ['rear']`): 2×2 square engines in a dark frame; each cell is a variable-shape
+  sweep of `roundedRectangle` (intake → casing → nozzle morphing square → round), revolution throat and glowing core;
+  params `length`, `roundness`, `nozzleFlare`, `gap` (D-023).
 - Weapons: two variants, made of primitives plus curves. `build(params, materials, { outward, clearance })`: they always fire
   along `+z` with `+y` up, and `outward` (the socket's hull normal) only sets which way the pylon grows (`clearance`, optional per socket, sets its length), so one weapon
   fits side and top hardpoints. They are built for the left side and mirrored with `scale.x = -1` for the right. `machineGun` (implemented) has a Bézier-profile revolution barrel

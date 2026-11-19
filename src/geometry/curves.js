@@ -43,3 +43,40 @@ export function sampleShape(curvePath, segmentsPerCurve) {
 
 	return { points, normals, u: lengths.map((l) => l / (length || 1)) };
 }
+
+/**
+ * Closed CCW rounded rectangle centred on the origin, as 9 cubic Béziers: the bottom side split in two (so the seam
+ * sits in the middle of a flat side), the other 3 sides, and 4 quarter-round corners (circle approximation,
+ * k ≈ 0.5523). Always the same sub-curve count, so it can morph inside a variable-shape sweep. Sides and corners join
+ * C1. `radius` must stay above 0 and below min(halfWidth, halfHeight): a zero-length piece has no tangent (no normal).
+ */
+export function roundedRectangle(halfWidth, halfHeight, radius) {
+	const w = halfWidth;
+	const h = halfHeight;
+	const r = radius;
+	const k = 0.5523 * r;
+	const v = (x, y) => new THREE.Vector2(x, y);
+	const line = (a, b) => [a.clone().lerp(b, 1 / 3), a.clone().lerp(b, 2 / 3), b];
+
+	const start = v(0, -h);
+	return bezierChain2([
+		start,
+		...line(start, v(w - r, -h)),
+		v(w - r + k, -h),
+		v(w, -h + r - k),
+		v(w, -h + r),
+		...line(v(w, -h + r), v(w, h - r)),
+		v(w, h - r + k),
+		v(w - r + k, h),
+		v(w - r, h),
+		...line(v(w - r, h), v(-w + r, h)),
+		v(-w + r - k, h),
+		v(-w, h - r + k),
+		v(-w, h - r),
+		...line(v(-w, h - r), v(-w, -h + r)),
+		v(-w, -h + r - k),
+		v(-w + r - k, -h),
+		v(-w + r, -h),
+		...line(v(-w + r, -h), start),
+	]);
+}

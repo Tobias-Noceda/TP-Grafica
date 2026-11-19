@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { bezierChain2 } from '../../geometry/curves.js';
+import { bezierChain2, roundedRectangle } from '../../geometry/curves.js';
 import { buildRevolutionGeometry, buildVariableSweepGeometry } from '../../geometry/sweep.js';
 import { box, buildPylon, place, supportDistance } from './common.js';
 
@@ -279,7 +279,7 @@ function buildChuteGeometry(normal, reach) {
 		at(reach * 0.35, RECEIVER.back - 0.45),
 		at(-0.06, RECEIVER.back - 0.45)
 	);
-	const section = roundedRectangle(CHUTE);
+	const section = roundedRectangle(CHUTE.width / 2, CHUTE.height / 2, CHUTE.corner);
 
 	return buildVariableSweepGeometry({
 		shapeAt: () => section,
@@ -290,38 +290,4 @@ function buildChuteGeometry(normal, reach) {
 		up: normal,
 		frameMethod: 'parallel',
 	});
-}
-
-/**
- * Closed CCW rounded rectangle centred on the origin: 4 straight edges and 4 quarter-round corners (cubic Bézier
- * approximations of a circle, k ≈ 0.5523), all joined C1 so the chute has soft edges.
- */
-function roundedRectangle({ width, height, corner }) {
-	const w = width / 2;
-	const h = height / 2;
-	const c = corner;
-	const k = 0.5523 * c;
-	const v = (x, y) => new THREE.Vector2(x, y);
-	const line = (a, b) => [a.clone().lerp(b, 1 / 3), a.clone().lerp(b, 2 / 3), b];
-
-	const start = v(-w + c, -h);
-	return bezierChain2([
-		start,
-		...line(start, v(w - c, -h)),
-		v(w - c + k, -h),
-		v(w, -h + c - k),
-		v(w, -h + c),
-		...line(v(w, -h + c), v(w, h - c)),
-		v(w, h - c + k),
-		v(w - c + k, h),
-		v(w - c, h),
-		...line(v(w - c, h), v(-w + c, h)),
-		v(-w + c - k, h),
-		v(-w, h - c + k),
-		v(-w, h - c),
-		...line(v(-w, h - c), v(-w, -h + c)),
-		v(-w, -h + c - k),
-		v(-w + c - k, -h),
-		start,
-	]);
 }

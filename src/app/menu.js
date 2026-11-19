@@ -33,33 +33,68 @@ export function createMenu(config, { onWingChange, onWingToggle, onWeaponChange,
 	};
 	showWingParams();
 
-	// Some weapons and thrusters only fit some hardpoints, so the position list is rebuilt for each type
-	partFolder(pane, 'Weapons', 'weapon', config.weapon, onWeaponChange);
-	partFolder(pane, 'Thrusters', 'thruster', config.thruster, onThrusterChange);
+	// Weapons and thrusters share the hardpoints: each position list leaves out the ones the other kind is using
+	const entries = { weapon: config.weapon, thruster: config.thruster };
+	const folders = {};
+	const onPositionChange = (kind, onChange) => () => {
+		onChange();
+		for (const other of Object.keys(folders)) if (other !== kind) folders[other].refresh();
+	};
+	folders.weapon = partFolder(pane, 'Weapons', 'weapon', entries, onPositionChange('weapon', onWeaponChange));
+	folders.thruster = partFolder(
+		pane,
+		'Thrusters',
+		'thruster',
+		entries,
+		onPositionChange('thruster', onThrusterChange)
+	);
+	Object.values(folders).forEach((folder) => folder.refresh());
 
 	return pane;
 }
 
 /**
- * Folder with a type list and a position list for one part kind. The positions are the hardpoints the chosen variant
- * allows (`hardpointsFor`); when the type changes and the current position is not allowed, it moves to the first one.
+ * Hardpoints taken by the other part kinds, with the ones they overlap (e.g. `tail` and `rear` share the tail plate).
  */
-function partFolder(pane, title, kind, entry, onChange) {
+function takenHardpoints(kind, entries) {
+	const taken = new Set();
+	for (const [other, { hardpoint }] of Object.entries(entries)) {
+		if (other === kind || !hardpoint) continue;
+		taken.add(hardpoint);
+		for (const id of ALL_HARDPOINTS[hardpoint].overlaps ?? []) taken.add(id);
+	}
+	return taken;
+}
+
+/**
+ * Folder with a type list and a position list for one part kind. The positions are the hardpoints the chosen variant
+ * allows (`hardpointsFor`) that no other kind is using; when the current position is not among them, it moves to the
+ * first one. `refresh()` rebuilds the list after the other kinds move.
+ */
+function partFolder(pane, title, kind, entries, onChange) {
+	const entry = entries[kind];
 	const folder = pane.addFolder({ title });
 	let positionBinding = null;
 	const showPositions = () => {
 		positionBinding?.dispose();
-		const ids = hardpointsFor(kind, entry.variant);
-		if (!ids.includes(entry.hardpoint)) entry.hardpoint = ids[0];
+		const taken = takenHardpoints(kind, entries);
+		const ids = hardpointsFor(kind, entry.variant).filter((id) => !taken.has(id));
+		const moved = ids.length > 0 && !ids.includes(entry.hardpoint);
+		if (moved) entry.hardpoint = ids[0];
 		positionBinding = folder
 			.addBinding(entry, 'hardpoint', { label: 'position', options: hardpointOptions(ids) })
 			.on('change', onChange);
+		return moved;
 	};
 	folder.addBinding(entry, 'variant', { label: 'type', options: variantOptions(kind) }).on('change', () => {
 		showPositions();
 		onChange();
 	});
-	showPositions();
+	return {
+		refresh() {
+			if (showPositions()) onChange();
+		},
+	};
 }
 
 // Tweakpane list options are { label: value }

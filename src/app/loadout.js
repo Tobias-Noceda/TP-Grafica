@@ -65,8 +65,9 @@ export function createLoadout(fuselage, materials) {
 		unequip(kind);
 		const variant = PART_KINDS[kind][variantId];
 		for (const socket of sockets) {
-			const { outward, clearance } = socket.userData;
-			mountPart(socket, variant.build({ ...variant.defaults, ...params }, materials, { outward, clearance }));
+			const { outward, clearance, side, toPairCentre } = socket.userData;
+			const options = { outward, clearance, side, toPairCentre };
+			mountPart(socket, variant.build({ ...variant.defaults, ...params }, materials, options));
 		}
 		mounted[kind] = { variantId, hardpointId, params };
 	}

@@ -392,6 +392,8 @@ function buildSockets(materials) {
 			const normal = new THREE.Vector3(...outward).normalize();
 			socket.userData.side = side;
 			socket.userData.outward = normal.clone();
+			// From the socket to the middle of its pair (left-side frame), for a part shared by both sockets
+			socket.userData.toPairCentre = new THREE.Vector3(-at[0], 0, 0);
 			if (clearance) socket.userData.clearance = clearance;
 			socket.userData.cover = cover.pad
 				? buildPadCover(materials, socket.position, cover.pad)
