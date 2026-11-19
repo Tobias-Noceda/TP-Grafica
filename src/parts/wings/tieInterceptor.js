@@ -5,7 +5,7 @@ import { levelMatrices } from '../../geometry/frames.js';
 import { buildVariableSweepGeometry } from '../../geometry/sweep.js';
 import { addTopHardpoint } from './common.js';
 
-const defaults = { pylonLength: 1.2, span: 1.45, tipReach: 1.5, rearDepth: 1.1 };
+const defaults = { pylonLength: 1.75, span: 1.45, tipReach: 2.25, rearDepth: 1.1 };
 
 /**
  * TIE Interceptor inspired wing: a neck leaves the flat hull side and flares into a dagger wing, a half-octagon at the
@@ -17,9 +17,9 @@ export const tieInterceptor = {
 	opens: false,
 	defaults,
 	paramSchema: {
-		pylonLength: { label: 'Neck length', min: 0.9, max: 1.6, step: 0.05 },
+		pylonLength: { label: 'Neck length', min: 1.5, max: 2.5, step: 0.05 },
 		span: { label: 'Span', min: 1.2, max: 1.6, step: 0.05 },
-		tipReach: { label: 'Tip reach', min: 1.0, max: 2.5, step: 0.05 },
+		tipReach: { label: 'Tip reach', min: 1.5, max: 3.0, step: 0.05 },
 		rearDepth: { label: 'Rear depth', min: 0.8, max: 1.4, step: 0.05 },
 	},
 	build: buildTieWing,
@@ -36,7 +36,7 @@ const FLARE_END = 0.94;
 
 const NOTCH_X = -0.3; // notch between the two daggers, in front of the neck centre
 const NOTCH_BULGE = 0.12; // the notch edges curve inwards by this much at the wing
-const HARDPOINT_V = 0.55;
+const HARDPOINT_V = 0.45;
 const PLATE_SCALE = 0.86; // red plates shrunk about their centroid, leaving the white cap as a frame
 const PLATE_DEPTH = 0.015;
 const STRUT = { width: 0.07, depth: 0.05 };

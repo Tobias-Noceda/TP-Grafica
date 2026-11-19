@@ -26,7 +26,7 @@ const BELLY = 0.5;
 const GAP = 0.1;
 const HOLDER = { width: 0.08, depthRatio: 0.5 };
 // Engines on the wing hardpoint are scaled down to fit between the hull and the TIE wing flare (radius ≤ 0.27 m)
-export const WING_SCALE = 0.45;
+export const WING_SCALE = 0.65;
 
 /**
  * The shared engine nacelle (see `buildEngineNacelle` in `common.js`), built around its local +y.
