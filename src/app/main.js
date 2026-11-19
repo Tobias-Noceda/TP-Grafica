@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -13,8 +12,10 @@ import { buildSpace } from '../scene/space.js';
 import { buildFuselage } from '../parts/fuselage.js';
 import { createLoadout, PART_KINDS } from './loadout.js';
 import { createMenu } from './menu.js';
+import { createCameras } from './cameras.js';
+import { setupShadows } from './shadows.js';
 
-let container, renderer, scene, camera, controls, composer, bloomPass, space, fuselage, loadout;
+let container, renderer, scene, cameras, renderPass, composer, bloomPass, space, fuselage, loadout, shadows, menu;
 const clock = new THREE.Clock();
 
 // Ship configuration edited by the menu
@@ -22,6 +23,7 @@ const config = {
 	wing: { variant: 'xwing', params: { ...PART_KINDS.wing.xwing.defaults } },
 	weapon: { variant: 'machineGun', hardpoint: 'nose' },
 	thruster: { variant: 'rearEngine', hardpoint: 'rear' },
+	view: { camera: 0, shadows: 'low' },
 };
 
 // Toggle animations: `t` moves towards `target` in `duration` seconds and is applied with easing.
@@ -46,26 +48,15 @@ function setupThreeJs() {
 	scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 	pmrem.dispose();
 
-	// Camera 1 (orbital general): from the back of the hangar looking out through the opening
-	camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
-	camera.position.set(0, 7, -HANGAR.depth / 2 + 4);
-
-	controls = new OrbitControls(camera, renderer.domElement);
-	controls.target.set(0, 5, 4);
-	controls.enableDamping = true;
-	controls.maxDistance = 40;
-	controls.maxPolarAngle = Math.PI * 0.55;
-	controls.update();
+	shadows = setupShadows(renderer, scene, config.view.shadows);
 
 	composer = new EffectComposer(renderer);
-	composer.addPass(new RenderPass(scene, camera));
-	bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.9);
+	// The camera is set once the cameras exist (they need the fuselage)
+	renderPass = new RenderPass(scene, null);
+	composer.addPass(renderPass);
+	bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 1);
 	composer.addPass(bloomPass);
 	composer.addPass(new OutputPass());
-
-	window.addEventListener('resize', onResize);
-	window.addEventListener('keydown', onKeyDown);
-	onResize();
 }
 
 function buildScene() {
@@ -77,26 +68,53 @@ function buildScene() {
 	fuselage = buildFuselage(materials);
 	platform.userData.mountPoint.add(fuselage);
 
+	// Only the ship casts; the platform deck and the hangar floor receive
+	shadows.enableOn(platform);
+	shadows.enableOn(scene.getObjectByName('floor'));
+	shadows.addContactShadow(platform.userData.mountPoint);
+	const shipShadows = () => shadows.enableOn(fuselage, { cast: true });
+
+	// Placeholder for the crane's moving element until the crane exists: on the ceiling, above the platform
+	const craneAnchor = new THREE.Object3D();
+	craneAnchor.name = 'crane-anchor';
+	craneAnchor.position.set(0, HANGAR.height - 2, 0);
+	scene.add(craneAnchor);
+
+	cameras = createCameras({ renderer, fuselage, craneAnchor, hint: document.getElementById('walk-hint') });
+	renderPass.camera = cameras.active;
+	cameras.onChange((index) => {
+		renderPass.camera = cameras.active;
+		config.view.camera = index;
+		menu?.refresh();
+	});
+
 	// Parts are mounted instantly until the crane assembles the ship
 	loadout = createLoadout(fuselage, materials);
-	const equipWings = () => loadout.equipWings(config.wing.variant, config.wing.params);
+	const equipWings = () => {
+		loadout.equipWings(config.wing.variant, config.wing.params);
+		shipShadows();
+	};
 	const equipPart = (kind) => () => {
 		try {
 			loadout.equip(kind, config[kind].variant, config[kind].hardpoint);
 		} catch (error) {
 			console.warn(error.message);
 		}
+		shipShadows();
 	};
 	const equipWeapon = equipPart('weapon');
 	const equipThruster = equipPart('thruster');
 	equipWings();
 	equipWeapon();
 	equipThruster();
-	createMenu(config, {
+	menu = createMenu(config, {
 		onWingChange: equipWings,
 		onWingToggle: () => toggle(wingFold),
 		onWeaponChange: equipWeapon,
 		onThrusterChange: equipThruster,
+		cameraOptions: Object.fromEntries(cameras.list.map(({ label }, i) => [`${i + 1}. ${label}`, i])),
+		onCameraChange: (index) => cameras.set(index),
+		onShadowsChange: (level) => shadows.setQuality(level),
 	});
 
 	space = buildSpace();
@@ -107,8 +125,7 @@ function onResize() {
 	const width = container.offsetWidth;
 	const height = container.offsetHeight;
 
-	camera.aspect = width / height;
-	camera.updateProjectionMatrix();
+	cameras.resize(width, height);
 
 	renderer.setSize(width, height);
 	composer.setSize(width, height);
@@ -116,8 +133,13 @@ function onResize() {
 }
 
 function onKeyDown(event) {
+	// Typing in a menu field must not switch cameras or toggle parts
+	if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
 	if (event.code === 'KeyT') toggle(gear);
 	if (event.code === 'KeyO') toggle(wingFold);
+	if (event.code === 'KeyC') cameras.next();
+	const digit = /^Digit([1-6])$/.exec(event.code);
+	if (digit) cameras.set(Number(digit[1]) - 1);
 }
 
 function toggle(state) {
@@ -135,13 +157,24 @@ function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();
 
-	controls.update();
+	cameras.update(dt);
 	space.update(dt);
-	stepToggle(gear, dt, (t) => fuselage.userData.setGearDeploy(t));
-	stepToggle(wingFold, dt, (t) => loadout.setWingsOpen(t));
+	// Moving casters re-render the shadow map; idle frames skip the shadow pass
+	stepToggle(gear, dt, (t) => {
+		fuselage.userData.setGearDeploy(t);
+		shadows.markDirty();
+	});
+	stepToggle(wingFold, dt, (t) => {
+		loadout.setWingsOpen(t);
+		shadows.markDirty();
+	});
+	shadows.render();
 	composer.render(dt);
 }
 
 setupThreeJs();
 buildScene();
+window.addEventListener('resize', onResize);
+window.addEventListener('keydown', onKeyDown);
+onResize();
 animate();

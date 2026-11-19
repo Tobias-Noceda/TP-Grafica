@@ -63,6 +63,7 @@ function buildShell({ materials, tiles }) {
 
 	// The floor slab sticks out 2 m past the opening so its edge is visible against space
 	const floor = box(W + 2, 0.6, D + 2, materials.floor, tiles.floor);
+	floor.name = 'floor';
 	shell.add(place(floor, 0, -0.3, 1));
 
 	const ceiling = box(W + 2, 0.6, D, materials.wall, tiles.metal);
@@ -337,8 +338,9 @@ function buildLights() {
 	// Real lights are kept to a minimum for performance; the lamps are emissive meshes that glow through bloom.
 	// Ceiling: two lights on the ship's centre line (x = 0), one above its tail and one above its nose. The ship sits
 	// on the platform at the origin, nose towards +z, spanning about z = -4.1 to 4.2.
+	// Dimmer than they would be alone: the shadow spot light (src/app/shadows.js) adds to them above the ship.
 	for (const z of [-SHIP_LIGHT_Z, SHIP_LIGHT_Z]) {
-		const light = new THREE.PointLight(0xffd2a0, 180, 0, 2);
+		const light = new THREE.PointLight(0xffd2a0, 60, 0, 2);
 		lights.add(place(light, 0, H - 2.5, z));
 	}
 

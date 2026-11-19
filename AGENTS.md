@@ -124,11 +124,12 @@ src/
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
 ```
 
-Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
+Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (view, wings, weapons, thrusters),
+`app/cameras.js` (6 cameras), `app/shadows.js` (spot + contact shadow),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/` (rearEngine, quadBlock),
 `parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
-crane, assembly, cameras,
+crane, assembly,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -336,6 +337,14 @@ IDLE → MOVE_OVER_PART → LOWER → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET �
 `C` cycles through the cameras. On resize, update the `aspect` of **every** perspective camera and call
 `updateProjectionMatrix()`. Enable only the active camera's controls.
 
+Implemented in `app/cameras.js` (`createCameras({ renderer, fuselage, craneAnchor, hint })`); the menu's View folder
+lists them too and follows the keys. Camera 3 follows `craneAnchor`: until the crane exists, `main.js` passes a stub
+`Object3D` on the ceiling above the platform; the crane must pass its gripper/trolley instead. Camera 6 locks the
+pointer on click (hint `#walk-hint` in `app.html`), walks at 4 m/s (Shift 8), stays at eye height inside the walls and
+outside the platform square. Camera 4 is a head-turn, not a fixed view: drag to look (yaw ±80°, pitch +40° / −30°, with the
+down limit shrinking to −8° as the head turns so it never looks into the pilot's shoulder), wheel zooms (fov 35–80),
+double-click recentres (`PILOT_LOOK` in `cameras.js`).
+
 ### 5.8 Hangar and environment (`hangar/hangar.js`, `hangar/platform.js`, `scene/space.js`)
 
 Implemented in iteration 1. The hangar and environment are **not** ship parts, so imported textures/models are allowed
@@ -355,7 +364,11 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
   (`x = 0`, above its tail and nose at `z = ±4`), plus one each on the left, right and back walls. Keep the real-light count low for performance, and add lamps as emissive meshes
   instead. `RoomEnvironment` PMREM is set as `scene.environment` for metal reflections. Emissive lamp meshes + `UnrealBloomPass` give the glow; `OutputPass` applies ACES tone mapping.
   Custom `ShaderMaterial`s include `<tonemapping_fragment>` and `<colorspace_fragment>`.
-- No shadows yet (materials/lighting section of the brief still to be defined).
+- Shadows (`app/shadows.js`, D-025): one ceiling `SpotLight` above the platform is the only shadow caster light
+  (ship self-shadowing) plus a blurred **contact shadow** plane on the deck (the deck metal hides direct-light shadows).
+  Only ship meshes cast (`shadows.enableOn(obj, { cast: true })` after every equip; they join layer 1 for the contact
+  shadow). `shadowMap.autoUpdate = false`: anything that moves a caster must call `shadows.markDirty()` (gear, wings,
+  equip today; the crane and parts in transit later). Menu View → shadows: Off / Low / High.
 - Platform (`hangar/platform.js`): `PLATFORM = { size: 10, height: 0.6, railWidth: 0.6, deckHeight: 0.3 }`, centred at
   the origin. It has a recessed ribbed deck, perimeter rails with emissive side lamps, corner clamp blocks, a yellow floor outline, and a
   power console at `x ≈ -7.2` whose two cables are `TubeGeometry` swept along `CatmullRomCurve3`s. The fuselage attaches

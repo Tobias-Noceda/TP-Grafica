@@ -82,19 +82,20 @@ export function createMaterials(renderer) {
 		}),
 
 		// Ship: untextured paint and metals
-		// Matte paint: the hull faces are flat, so a glossy finish reflects the lamps and environment on a whole face
+		// Matte paint: the hull faces are flat, so a glossy finish reflects the lamps and environment on a whole face.
+		// Off-white rather than white: under the shadow spot a brighter albedo goes past the bloom threshold and burns.
 		hullPaint: new THREE.MeshStandardMaterial({
-			color: 0xd8d6cf,
-			roughness: 0.75,
-			metalness: 0.05,
-			envMapIntensity: 0.4,
+			color: 0xaeaca6,
+			roughness: 0.9,
+			metalness: 0,
+			envMapIntensity: 0.25,
 		}),
 
 		hullRed: new THREE.MeshStandardMaterial({
-			color: 0xa8231c,
-			roughness: 0.75,
-			metalness: 0.05,
-			envMapIntensity: 0.4,
+			color: 0x96201a,
+			roughness: 0.9,
+			metalness: 0,
+			envMapIntensity: 0.25,
 		}),
 
 		hullDark: new THREE.MeshStandardMaterial({
@@ -104,9 +105,10 @@ export function createMaterials(renderer) {
 		}),
 
 		chrome: new THREE.MeshStandardMaterial({
-			color: 0xc8ccd2,
-			roughness: 0.2,
+			color: 0xb4b8be,
+			roughness: 0.35,
 			metalness: 1,
+			envMapIntensity: 0.7,
 		}),
 
 		gunMetal: new THREE.MeshStandardMaterial({

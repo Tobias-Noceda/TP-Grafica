@@ -5,10 +5,23 @@ import { ALL_HARDPOINTS, PART_KINDS, hardpointsFor } from './loadout.js';
 /**
  * Tweakpane menu, fixed to the top-right corner. Edits `config` in place and calls back when something changes:
  * `onWingChange()` (type or geometric params), `onWingToggle()` (open/close button), `onWeaponChange()` and
- * `onThrusterChange()`.
+ * `onThrusterChange()`. The view folder edits `config.view`: `onCameraChange(index)` (options from `cameraOptions`,
+ * `{ label: index }`) and `onShadowsChange(level)`. Call `refresh()` on the returned pane after changing
+ * `config.view.camera` from the keyboard.
  */
-export function createMenu(config, { onWingChange, onWingToggle, onWeaponChange, onThrusterChange }) {
+export function createMenu(
+	config,
+	{ onWingChange, onWingToggle, onWeaponChange, onThrusterChange, cameraOptions, onCameraChange, onShadowsChange }
+) {
 	const pane = new Pane({ title: 'Astillero orbital' });
+
+	const view = pane.addFolder({ title: 'View' });
+	view.addBinding(config.view, 'camera', { label: 'camera (1-6, C)', options: cameraOptions }).on('change', (event) =>
+		onCameraChange(event.value)
+	);
+	view.addBinding(config.view, 'shadows', {
+		options: { Off: 'off', Low: 'low', High: 'high' },
+	}).on('change', (event) => onShadowsChange(event.value));
 
 	const wings = pane.addFolder({ title: 'Wings' });
 	wings.addBinding(config.wing, 'variant', { label: 'type', options: variantOptions('wing') }).on('change', () => {

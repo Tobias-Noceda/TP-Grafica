@@ -47,7 +47,7 @@ sit between the centre rib and the ±2.2 m ribs (D-024).
 ### D-003 Matte hull and faint glass reflections
 
 The hull faces are flat, so a glossy finish reflects the `RoomEnvironment` and the lamps over a whole face at once.
-`hullPaint`/`hullRed` use roughness 0.75 and `envMapIntensity` 0.4. The canopy `glass` uses `envMapIntensity` 0.35.
+`hullPaint`/`hullRed` use roughness 0.9, metalness 0 and `envMapIntensity` 0.25, and the paint is off-white (`0xaeaca6`), not white: under the shadow spot (D-025) a whiter hull went past the bloom threshold and burned the image. The bloom threshold is 1.0, so only emissive lamps, screens and exhaust glow. `chrome` is roughness 0.35 so its highlights stay small. The canopy `glass` uses `envMapIntensity` 0.35.
 
 ### D-004 Pilot instead of an astromech droid
 
@@ -283,3 +283,14 @@ not as "apoyos suficientes". The gear is now a tricycle: the centred nose gear (
 main gears under the body sides (`socket_gear_back_L/R`, x = ±0.45, z = -2.6), all built by the same
 `buildLandingGear` and driven together by `setGearDeploy`. The main gears' twin wheels span x ≈ 0.17–0.73, so they stay
 inside the body half-width (0.75) when retracted and miss the platform deck ribs.
+
+### D-025 Cheap, on-demand ship shadows
+
+Performance first: no shadows on the point lights (each would need 6 shadow renders). One ceiling `SpotLight` above the
+platform (1 render) casts, and only the ship casts, so the caster set stays small. The deck and walls use
+`metalness: 1` materials, which ignore diffuse light, so a direct-light shadow on them is almost invisible: the ship is
+grounded with a contact shadow instead (the three.js `webgl_shadow_contact` technique: ship depth seen from below on
+layer 1, two blur passes, transparent plane on the deck), which works on any material. Both maps are rendered only when
+`markDirty()` is called (`shadowMap.autoUpdate = false`), so a still scene costs no shadow pass. The two ceiling point
+lights over the ship were dimmed (180 → 60) to make room for the spot. Quality Low = 1024 spot / 256 contact, High =
+2048 / 512, Off disables both.
