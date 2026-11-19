@@ -374,12 +374,13 @@ function buildSockets(materials) {
 		{ name: 'socket_wing', at: [BODY.halfWidth, 0.6, -2.6], outward: [1, 0, 0], cover: { size: [1.4, 0.5] } },
 		{ name: 'socket_nose', at: [noseX, 0.4, noseZ], outward: [1, 0, noseSlope], cover: { size: [0.45, 0.28] } },
 		{ name: 'socket_tail', at: [0.4, 0.58, rearZ], outward: [0, 0, -1], cover: { size: [0.28, 0.3] } },
-		// Top parts stand on a tall pylon so they clear the canopy in front of them
+		// Top parts stand on a tall pylon so they clear the canopy in front of them: with 0.65 m the lowest minigun
+		// barrel is ~0.17 m above the canopy top (BODY.top + 0.56), so no gun seems to fire into the cockpit
 		{
 			name: 'socket_top',
 			at: [TOP_PAD_X, topY, SPINE.z],
 			outward: [0, 1, 0],
-			clearance: 0.4,
+			clearance: 0.65,
 			cover: { pad: 0.15 },
 		},
 	];

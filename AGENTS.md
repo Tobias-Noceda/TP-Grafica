@@ -116,7 +116,8 @@ src/
     thrusters.js         thrusterVariants map only (2 variants, body + exhaust zone)
     propulsors/          one file per thruster variant: rearEngine.js (revolution, rear-only)
     weapons.js           weaponVariants map only (2 variants)
-    weapons/             one file per weapon variant: machineGun.js (revolution barrel)
+    weapons/             one file per weapon variant: machineGun.js (revolution barrel), minigun.js (revolution
+                         barrels + housing, curved-sweep feed chute, wing/top only), common.js (pylon, helpers)
     landingGear.js       hierarchical (strut → knee → lowerLeg → wheel), setDeploy(t)
     sockets.js           shared mountPart / unmountPart / buildPadCover
     registry.js          { type → variants → { build(params), defaults, paramSchema } }
@@ -125,8 +126,8 @@ src/
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/rearEngine.js`,
-`parts/weapons/machineGun.js`, `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
-second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras,
+`parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
+second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, crane, assembly, cameras,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -257,7 +258,11 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
 - Weapons: two variants, made of primitives plus curves. `build(params, materials, { outward, clearance })`: they always fire
   along `+z` with `+y` up, and `outward` (the socket's hull normal) only sets which way the pylon grows (`clearance`, optional per socket, sets its length), so one weapon
   fits side and top hardpoints. They are built for the left side and mirrored with `scale.x = -1` for the right. `machineGun` (implemented) has a Bézier-profile revolution barrel
-  with params `barrelLength` and `muzzleFlare`, and a receiver, rail, sights, fins and magazine made of primitives.
+  with params `barrelLength` and `muzzleFlare`, and a receiver, rail, sights, fins and magazine made of primitives. `minigun` (implemented, `hardpoints: ['wing', 'top']`,
+  D-022): `barrelCount` 5–8 barrels (shared Bézier revolution) in a `rotor` group with clamp rings, a revolution motor
+  housing, and an ammo feed chute swept along a curved path into the hull; params `barrelCount`, `barrelLength`.
+  `userData.fire()` queues a one-barrel turn (`2π / n`), `userData.update(dt)` runs it, `userData.muzzle` marks the
+  firing barrel's muzzle (for a future muzzle flash). Like thrusters, a weapon variant may declare `hardpoints`.
 - Fuselage (fixed, implemented): X-wing inspired, built **only from primitives**, with no curves or sweeps. The main
   pieces are `taperedBox`es, which are `BoxGeometry`s with their corners moved so every face stays planar with flat
   normals. Nose points to `+z`, up `+y`, pilot's left `+x`. `FUSELAGE` holds the key z stations and the belly

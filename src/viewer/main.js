@@ -347,6 +347,10 @@ function createMenu() {
 			});
 			if (piece.fold) folder.addButton({ title: 'Open / close (O)' }).on('click', () => toggleFold(piece));
 		}
+		// Weapons that spin on each shot (minigun): one press turns the barrel cluster by one barrel
+		if (piece.object.userData.fire) {
+			folder.addButton({ title: 'Fire (one barrel step)' }).on('click', () => piece.object.userData.fire?.());
+		}
 		if (piece.deploy !== undefined) {
 			folder.addBinding(piece, 'deploy', { label: 'deploy', min: 0, max: 1 }).on('change', () => {
 				applyPose(piece);
@@ -375,7 +379,10 @@ function animate() {
 
 	controls.update();
 	space.update(dt);
-	for (const piece of pieces) stepFold(piece, dt);
+	for (const piece of pieces) {
+		stepFold(piece, dt);
+		piece.object?.userData.update?.(dt);
+	}
 	for (const helper of normalsHelpers.children) helper.update();
 	composer.render(dt);
 	labelRenderer.render(scene, camera);

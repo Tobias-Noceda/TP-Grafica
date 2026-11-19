@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 import { bezierChain2 } from '../../geometry/curves.js';
 import { buildRevolutionGeometry } from '../../geometry/sweep.js';
+import { box, buildPylon, place, supportDistance } from './common.js';
 
 const defaults = { barrelLength: 1.1, muzzleFlare: 1 };
 
@@ -49,10 +50,7 @@ function buildMachineGun(
 	gun.add(body);
 
 	// Pylon along the normal, from inside the hull to the body
-	const pylon = box(0.12, clearance + 0.04, 0.4, materials.hullDark);
-	pylon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
-	pylon.position.copy(normal).multiplyScalar(clearance / 2);
-	gun.add(pylon);
+	gun.add(buildPylon(normal, clearance, materials.hullDark));
 
 	const length = RECEIVER.front - RECEIVER.back;
 	const centerZ = (RECEIVER.front + RECEIVER.back) / 2;
@@ -157,23 +155,4 @@ function barrelProfile(length, flare) {
 		v(bore * 0.3, L - 0.3),
 		v(0, L - 0.3),
 	]);
-}
-
-/**
- * Largest projection of the box onto `direction`: how far the box reaches from its origin that way.
- */
-function supportDistance(bounds, direction) {
-	return ['x', 'y', 'z'].reduce(
-		(sum, axis) => sum + Math.max(direction[axis] * bounds.min[axis], direction[axis] * bounds.max[axis]),
-		0
-	);
-}
-
-function box(width, height, depth, material) {
-	return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-}
-
-function place(mesh, x, y, z) {
-	mesh.position.set(x, y, z);
-	return mesh;
 }

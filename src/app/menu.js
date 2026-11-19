@@ -33,37 +33,33 @@ export function createMenu(config, { onWingChange, onWingToggle, onWeaponChange,
 	};
 	showWingParams();
 
-	const weapons = pane.addFolder({ title: 'Weapons' });
-	weapons
-		.addBinding(config.weapon, 'variant', { label: 'type', options: variantOptions('weapon') })
-		.on('change', onWeaponChange);
-	weapons
-		.addBinding(config.weapon, 'hardpoint', {
-			label: 'position',
-			options: hardpointOptions(hardpointsFor('weapon')),
-		})
-		.on('change', onWeaponChange);
-
-	// Some thrusters only fit some hardpoints, so the position list is rebuilt for each type
-	const thrusters = pane.addFolder({ title: 'Thrusters' });
-	let positionBinding = null;
-	const showThrusterPositions = () => {
-		positionBinding?.dispose();
-		const ids = hardpointsFor('thruster', config.thruster.variant);
-		if (!ids.includes(config.thruster.hardpoint)) config.thruster.hardpoint = ids[0];
-		positionBinding = thrusters
-			.addBinding(config.thruster, 'hardpoint', { label: 'position', options: hardpointOptions(ids) })
-			.on('change', onThrusterChange);
-	};
-	thrusters
-		.addBinding(config.thruster, 'variant', { label: 'type', options: variantOptions('thruster') })
-		.on('change', () => {
-			showThrusterPositions();
-			onThrusterChange();
-		});
-	showThrusterPositions();
+	// Some weapons and thrusters only fit some hardpoints, so the position list is rebuilt for each type
+	partFolder(pane, 'Weapons', 'weapon', config.weapon, onWeaponChange);
+	partFolder(pane, 'Thrusters', 'thruster', config.thruster, onThrusterChange);
 
 	return pane;
+}
+
+/**
+ * Folder with a type list and a position list for one part kind. The positions are the hardpoints the chosen variant
+ * allows (`hardpointsFor`); when the type changes and the current position is not allowed, it moves to the first one.
+ */
+function partFolder(pane, title, kind, entry, onChange) {
+	const folder = pane.addFolder({ title });
+	let positionBinding = null;
+	const showPositions = () => {
+		positionBinding?.dispose();
+		const ids = hardpointsFor(kind, entry.variant);
+		if (!ids.includes(entry.hardpoint)) entry.hardpoint = ids[0];
+		positionBinding = folder
+			.addBinding(entry, 'hardpoint', { label: 'position', options: hardpointOptions(ids) })
+			.on('change', onChange);
+	};
+	folder.addBinding(entry, 'variant', { label: 'type', options: variantOptions(kind) }).on('change', () => {
+		showPositions();
+		onChange();
+	});
+	showPositions();
 }
 
 // Tweakpane list options are { label: value }

@@ -9,13 +9,15 @@ The brief asks for **at least one** use of each technique **across the whole shi
 that uses one of them must be listed here, with the file and function, so a future change does not remove the only
 instance by accident. A part's look comes first: use a technique only where it fits the piece naturally.
 
-| Technique                                     | Part / variant                                     | Where                                                                                                    | Curves                                                                      | Notes                                                                                                                                                                                                                      |
-| --------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surface of revolution                         | Weapon `machineGun` (barrel)                       | `src/parts/weapons/machineGun.js` `barrelProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`    | `CurvePath` of 8 `CubicBezierCurve`s (`bezierChain2`)                       | Jacket → S shoulder → barrel → muzzle bulb → flared crown → face → bore. Sharp knots keep hard edges. Params change the profile.                                                                                           |
-| Surface of revolution                         | Thruster `rearEngine` (casing, nozzle, cone, core) | `src/parts/propulsors/rearEngine.js` `engineProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry` | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`), one per material run  | Groove, raised stripe, waist, collar, curved converging nozzle (C1 with the collar), thick lip, petal cone to the core. `length` and `nozzleFlare` change the profile.                                                     |
-| Sweep along a curved path (oriented sections) | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `buildPlaneWing` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | `CubicBezierCurve3` span path, frames from `levelMatrices` (`method: 'up'`) | Path leaves the root along +x and curves back to the tip; sections follow its tangent. Subtle: only visible with `sweep > 0` (default 0.6). A clearer dedicated use is still a goal.                                       |
-| Variable-shape sweep                          | Wing `tie` (whole wing: neck → flare → wing)       | `src/parts/wings/tieInterceptor.js` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | 11 `CubicBezierCurve`s per section (`bezierChain2`)                         | **Main use.** Starts as a rectangle flush on the hull and ends as the full wing outline (half-octagon back extended forward into two daggers, curved notch edges). Different start and end shapes (D-021).                 |
-| Variable-shape sweep                          | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`        | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)             | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot. Secondary: same airfoil family at both ends (D-021). |
+| Technique                                     | Part / variant                                     | Where                                                                                                                | Curves                                                                                                                           | Notes                                                                                                                                                                                                                      |
+| --------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Surface of revolution                         | Weapon `machineGun` (barrel)                       | `src/parts/weapons/machineGun.js` `barrelProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`                | `CurvePath` of 8 `CubicBezierCurve`s (`bezierChain2`)                                                                            | Jacket → S shoulder → barrel → muzzle bulb → flared crown → face → bore. Sharp knots keep hard edges. Params change the profile.                                                                                           |
+| Surface of revolution                         | Weapon `minigun` (barrels, motor housing)          | `src/parts/weapons/minigun.js` `barrelProfile`, `housingProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry` | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`)                                                                             | Barrel: breech collar → curved shoulder → tube → muzzle lip → face → bore (`barrelLength` rebuilds it). Housing: back face → rounded bell → waist → flared collar → front face (C1 bell and waist).                        |
+| Surface of revolution                         | Thruster `rearEngine` (casing, nozzle, cone, core) | `src/parts/propulsors/rearEngine.js` `engineProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`             | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`), one per material run                                                       | Groove, raised stripe, waist, collar, curved converging nozzle (C1 with the collar), thick lip, petal cone to the core. `length` and `nozzleFlare` change the profile.                                                     |
+| Sweep along a curved path (oriented sections) | Weapon `minigun` (ammo feed chute)                 | `src/parts/weapons/minigun.js` `buildChuteGeometry` → `src/geometry/sweep.js` `buildVariableSweepGeometry`           | `CubicBezierCurve3` path, frames from `levelMatrices` (`method: 'parallel'`); section = rounded rectangle, 8 `CubicBezierCurve`s | **Main use.** Leaves the receiver backwards and bends ~90° into the hull; constant section oriented along the path (D-022).                                                                                                |
+| Sweep along a curved path (oriented sections) | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `buildPlaneWing` → `src/geometry/sweep.js` `buildVariableSweepGeometry`               | `CubicBezierCurve3` span path, frames from `levelMatrices` (`method: 'up'`)                                                      | Path leaves the root along +x and curves back to the tip; sections follow its tangent. Secondary: subtle, only visible with `sweep > 0` (default 0.6). The minigun chute is the clear use.                                 |
+| Variable-shape sweep                          | Wing `tie` (whole wing: neck → flare → wing)       | `src/parts/wings/tieInterceptor.js` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`               | 11 `CubicBezierCurve`s per section (`bezierChain2`)                                                                              | **Main use.** Starts as a rectangle flush on the hull and ends as the full wing outline (half-octagon back extended forward into two daggers, curved notch edges). Different start and end shapes (D-021).                 |
+| Variable-shape sweep                          | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`                    | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)                                                                  | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot. Secondary: same airfoil family at both ends (D-021). |
 
 **Does not count** (kept here so nobody relies on it):
 
@@ -106,8 +108,9 @@ hardpoint. Weapons do not accept the tail, because it faces backwards.
 
 The former dark "spine" looked like a cover plate. It is now a raised fairing in hull paint with red edge trims and dark
 grooves (part of the hull). Its two empty sockets show round white pads with a red ring and a chrome hub, so they read
-differently from the side plates. Its sockets set `clearance: 0.4`, so a weapon mounted there stands on a tall vertical pylon. Its barrel then
-runs about 0.25 m above the canopy top instead of in line with it (with the default 0.12 m it was aimed at the cabin).
+differently from the side plates. Its sockets set `clearance: 0.65`, so a weapon mounted there stands on a tall vertical pylon. The machine gun's barrel
+then runs about 0.5 m above the canopy top, and the minigun's lowest barrel about 0.17 m (with 0.4 m the minigun's
+lower barrels were level with the canopy and looked aimed at the cabin; with the default 0.12 m every gun was).
 
 ### D-013 Menu: Tweakpane, top-right
 
@@ -212,3 +215,28 @@ its proportions change. The plane wing is kept as it is (it looks good and holds
 - The three sweep meshes are tagged `userData.technique = 'variableSweep'`; the part viewer's **sweep only** checkbox
   (in the wing's folder) hides everything else (struts, plates, hub, pad) and focuses the wing, to show the technique
   on its own.
+
+### D-022 Minigun: rotary barrels, curved feed chute, wing and top hardpoints only
+
+Second weapon (`weaponVariants.minigun`, `weapons/minigun.js`), inspired by an M134-style rotary gun:
+
+- **Hardpoints**: `hardpoints: ['wing', 'top']`. It is too big for the cockpit sides (`nose`), so it only goes on the
+  wings or behind the cockpit. The menu now builds the weapon position list per variant (`partFolder` in
+  `app/menu.js`, shared with the thrusters).
+- **Barrels**: `barrelCount` 5–8 (step 1) barrels on a circle around the spindle. The circle radius grows with the
+  count so neighbouring breech collars never touch (`(collar + gap) / sin(π / n)`, at least 0.06 m). All barrels share
+  one revolution geometry. Clamp rings are flat `ExtrudeGeometry` discs with one hole per barrel (detail).
+- **Motor housing**: a second Bézier-profile revolution between the receiver and the rotor.
+- **Feed chute**: the clear use of the curved-path sweep (the plane wing's is subtle). A rounded-rectangle section
+  (C1 corners) swept along a `CubicBezierCurve3` that leaves the back of the receiver and bends into the hull behind
+  the pylon. The path is built from the hull normal, so it fits the wing and top sockets. Frames use parallel
+  transport. Both ends are buried, so no caps. Tagged `userData.technique = 'curvedSweep'` for the viewer's
+  **sweep only** checkbox.
+- **Shooting spin**: the barrels, rings and spindle live in a `rotor` group. `userData.fire()` queues one step and
+  `userData.update(dt)` turns the rotor by exactly one barrel (`2π / n`, e.g. 72° with 5 barrels) in 0.12 s with a
+  smoothstep. The angle is rebuilt from an integer step count, so it never drifts. `userData.muzzle` (outside the
+  rotor) marks the top barrel's muzzle, always occupied after a step: the anchor for the future muzzle flash. The
+  barrel count is not changed while shooting, so the rotor is never rebuilt mid-spin. The part viewer has a **Fire**
+  button; the main scene does not call `fire`/`update` yet.
+- Receiver, top rail, side plates, bolts and the rear block are primitives. Pylon, `supportDistance`, `box` and `place`
+  moved to `weapons/common.js`, shared with the machine gun.
