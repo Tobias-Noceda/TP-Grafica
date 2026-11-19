@@ -5,11 +5,12 @@ import { levelMatrices } from '../../geometry/frames.js';
 import { buildVariableSweepGeometry } from '../../geometry/sweep.js';
 import { addTopHardpoint } from './common.js';
 
-const defaults = { pylonLength: 1.2, span: 1.45, tipReach: 1, rearDepth: 1.1 };
+const defaults = { pylonLength: 1.2, span: 1.45, tipReach: 1.5, rearDepth: 1.1 };
 
 /**
  * TIE Interceptor inspired wing: a neck leaves the flat hull side and flares into a dagger wing, a half-octagon at the
- * back with two mirrored triangles pointing forward. Static (does not open).
+ * back whose top/bottom edges run forward into two mirrored daggers pointing forward. Static (does not open).
+ * Reference: https://www.starwars.com/databank/tie-interceptor
  */
 export const tieInterceptor = {
 	label: 'TIE Interceptor',
@@ -18,7 +19,7 @@ export const tieInterceptor = {
 	paramSchema: {
 		pylonLength: { label: 'Neck length', min: 0.9, max: 1.6, step: 0.05 },
 		span: { label: 'Span', min: 1.2, max: 1.6, step: 0.05 },
-		tipReach: { label: 'Tip reach', min: 0.4, max: 1.5, step: 0.05 },
+		tipReach: { label: 'Tip reach', min: 1.0, max: 2.5, step: 0.05 },
 		rearDepth: { label: 'Rear depth', min: 0.8, max: 1.4, step: 0.05 },
 	},
 	build: buildTieWing,
@@ -26,7 +27,7 @@ export const tieInterceptor = {
 
 // Root rectangle flush on the hull (below the red side stripe) and the slimmer neck, as half sizes in section coords
 const ROOT = { halfLength: 0.8, halfHeight: 0.32 };
-const NECK = { halfLength: 0.5, halfHeight: 0.2 };
+const NECK = { halfLength: 0.2, halfHeight: 0.2 };
 
 // Path stations (fractions of the neck length): root fillet ends, the flare into the wing starts and ends
 const FILLET_END = 0.25;
@@ -99,32 +100,73 @@ function buildTieWing(params, materials) {
 	return wing;
 }
 
+// Outline vertex indices (counter-clockwise). Every outline (root, neck, wing) uses this order and count.
+const V = {
+	notch: 0,
+	lowerInner: 1,
+	lowerTip: 2,
+	lowerShoulder: 3,
+	bottomRear: 4,
+	rearLower: 5,
+	rearUpper: 6,
+	topRear: 7,
+	upperShoulder: 8,
+	upperTip: 9,
+	upperInner: 10,
+};
+
+// Wing outline proportions, as fractions of the span (y) or of the tip x (shoulder)
+const REAR_HALF_HEIGHT = 0.4; // half height of the vertical rear edge
+const TIP_HEIGHT = 0.4; // the tips sit near the centre line, well inside the top/bottom edges
+const SHOULDER_REACH = 0.35; // where the top/bottom edge stops and the dagger edge starts, towards the tip
+
 /**
- * Wing outline vertices in section coordinates (x backwards, y up), counter-clockwise: notch, lower tip, bottom-rear
- * corner, rear-lower, rear-upper, top-rear corner, upper tip. The back is half an octagon; the tips point forward.
+ * Wing outline vertices in section coordinates (x backwards, y up), counter-clockwise (see `V`). The back is half an
+ * octagon whose top and bottom edges carry on forward to a shoulder; from there the dagger edge narrows to a tip
+ * near the centre line, pointing forward. The inner points sit at the tip height and the same distance ahead of the
+ * socket (x = -tip height), so the dagger's inner edge runs straight from them to the tip before the notch.
  */
 function wingOutline(span, tipReach, rearDepth) {
 	// Long forward daggers, like the reference: the tips reach well ahead of the neck
 	const tipX = -(0.9 + 1.4 * tipReach);
+	const tipY = TIP_HEIGHT * span;
+	const shoulderX = SHOULDER_REACH * tipX;
 	const p = (x, y) => new THREE.Vector2(x, y);
 	return [
 		p(NOTCH_X, 0),
-		p(tipX, -span),
-		p(0.45 * rearDepth, -0.72 * span),
-		p(rearDepth, -0.28 * span),
-		p(rearDepth, 0.28 * span),
-		p(0.45 * rearDepth, 0.72 * span),
-		p(tipX, span),
+		p(-tipY, -tipY),
+		p(tipX, -tipY),
+		p(shoulderX, -span),
+		p(0.45 * rearDepth, -span),
+		p(rearDepth, -REAR_HALF_HEIGHT * span),
+		p(rearDepth, REAR_HALF_HEIGHT * span),
+		p(0.45 * rearDepth, span),
+		p(shoulderX, span),
+		p(tipX, tipY),
+		p(-tipY, tipY),
 	];
 }
 
 /**
- * The same 7 vertices placed on a rectangle: notch → front middle, tips → front corners, top/bottom-rear corners →
- * points along the top/bottom edges, rear vertices → rear corners.
+ * The same 11 vertices placed on a rectangle: notch → front middle, inner points → halfway along the front edge,
+ * tips → front corners, shoulders and top/bottom-rear corners → points along the top/bottom edges, rear vertices →
+ * rear corners.
  */
 function rectangleOutline({ halfLength: a, halfHeight: b }) {
 	const p = (x, y) => new THREE.Vector2(x, y);
-	return [p(-a, 0), p(-a, -b), p(0.3 * a, -b), p(a, -b), p(a, b), p(0.3 * a, b), p(-a, b)];
+	return [
+		p(-a, 0),
+		p(-a, -0.5 * b),
+		p(-a, -b),
+		p(-0.35 * a, -b),
+		p(0.3 * a, -b),
+		p(a, -b),
+		p(a, b),
+		p(0.3 * a, b),
+		p(-0.35 * a, b),
+		p(-a, b),
+		p(-a, 0.5 * b),
+	];
 }
 
 const ROOT_OUTLINE = rectangleOutline(ROOT);
@@ -135,7 +177,7 @@ const NECK_OUTLINE = rectangleOutline(NECK);
 const easeOut = (t) => 1 - (1 - t) ** 3;
 
 /**
- * Section at path fraction v: a closed CCW chain of 7 cubic Béziers, one per edge, always the same count so every
+ * Section at path fraction v: a closed CCW chain of 11 cubic Béziers, one per edge, always the same count so every
  * level has the same vertex count. The vertices morph root rectangle → neck rectangle → wing outline. Straight edges
  * keep their control points at 1/3 and 2/3; the two notch edges bulge inwards as the wing grows. Every vertex is a
  * knot, so the wing keeps sharp edges.
@@ -181,7 +223,7 @@ function toWing(point, x) {
 }
 
 /**
- * White struts on the inner (red) face: along the straight lines that the tip, top/bottom-rear and rear vertices
+ * White struts on the inner (red) face: along the straight lines that every outline vertex but the notch
  * follow from the neck to the wing (the flare is linear, so these lines lie on the surface).
  */
 function buildStruts(outline, pylonLength, materials) {
@@ -190,7 +232,7 @@ function buildStruts(outline, pylonLength, materials) {
 
 	const startX = FLARE_START * pylonLength;
 	const endX = FLARE_END * pylonLength;
-	for (const i of [1, 2, 3, 4, 5, 6]) {
+	for (let i = V.lowerInner; i <= V.upperInner; i++) {
 		const start = toWing(NECK_OUTLINE[i], startX);
 		const end = toWing(outline[i], endX);
 		const length = start.distanceTo(end);
@@ -213,7 +255,12 @@ function buildOuterFace(outline, pylonLength, materials) {
 	face.name = 'outer-face';
 	face.position.x = pylonLength;
 
-	const [notch, , , , rearUpper, topRear, upperTip] = outline;
+	const notch = outline[V.notch];
+	const rearUpper = outline[V.rearUpper];
+	const topRear = outline[V.topRear];
+	const upperShoulder = outline[V.upperShoulder];
+	const upperTip = outline[V.upperTip];
+	const upperInner = outline[V.upperInner];
 	const centre = new THREE.Vector2(0, 0);
 	const rearMiddle = new THREE.Vector2(rearUpper.x, 0);
 
@@ -224,17 +271,19 @@ function buildOuterFace(outline, pylonLength, materials) {
 	front.bezierCurveTo(
 		...notch
 			.clone()
-			.lerp(upperTip, 1 / 3)
+			.lerp(upperInner, 1 / 3)
 			.add(bulge)
 			.toArray(),
 		...notch
 			.clone()
-			.lerp(upperTip, 2 / 3)
+			.lerp(upperInner, 2 / 3)
 			.add(bulge)
 			.toArray(),
-		upperTip.x,
-		upperTip.y
+		upperInner.x,
+		upperInner.y
 	);
+	front.lineTo(upperTip.x, upperTip.y);
+	front.lineTo(upperShoulder.x, upperShoulder.y);
 	front.lineTo(topRear.x, topRear.y);
 	front.lineTo(centre.x, centre.y);
 	front.closePath();

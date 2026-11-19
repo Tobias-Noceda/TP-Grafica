@@ -241,7 +241,7 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
   closed). `plane` (implemented): one fixed panel per side, a variable-shape sweep of a Bézier airfoil along a Bézier
   span path; params `span`, `tipChord`, `sweep`, `rootThickness`. `tie` (implemented, TIE Interceptor inspired, static):
   the whole wing is one variable-shape sweep whose section goes from a rectangle flush on the hull to the full wing
-  outline (half-octagon back + two forward daggers); hardpoint on top of the neck; params `pylonLength`, `span`,
+  outline (half-octagon back extended forward into two daggers); hardpoint on top of the neck; params `pylonLength`, `span`,
   `tipReach`, `rearDepth` (D-021).
   The left and right wings may be mirrored copies, using `scale.x = -1` on the parent group. Flip the winding or use
   `side: DoubleSide` when mirroring.

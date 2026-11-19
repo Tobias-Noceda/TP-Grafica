@@ -14,7 +14,7 @@ instance by accident. A part's look comes first: use a technique only where it f
 | Surface of revolution                         | Weapon `machineGun` (barrel)                       | `src/parts/weapons/machineGun.js` `barrelProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry`    | `CurvePath` of 8 `CubicBezierCurve`s (`bezierChain2`)                       | Jacket → S shoulder → barrel → muzzle bulb → flared crown → face → bore. Sharp knots keep hard edges. Params change the profile.                                                                                           |
 | Surface of revolution                         | Thruster `rearEngine` (casing, nozzle, cone, core) | `src/parts/propulsors/rearEngine.js` `engineProfile` → `src/geometry/sweep.js` `buildRevolutionGeometry` | `CurvePath`s of `CubicBezierCurve`s (`bezierChain2`), one per material run  | Groove, raised stripe, waist, collar, curved converging nozzle (C1 with the collar), thick lip, petal cone to the core. `length` and `nozzleFlare` change the profile.                                                     |
 | Sweep along a curved path (oriented sections) | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `buildPlaneWing` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | `CubicBezierCurve3` span path, frames from `levelMatrices` (`method: 'up'`) | Path leaves the root along +x and curves back to the tip; sections follow its tangent. Subtle: only visible with `sweep > 0` (default 0.6). A clearer dedicated use is still a goal.                                       |
-| Variable-shape sweep                          | Wing `tie` (whole wing: neck → flare → wing)       | `src/parts/wings/tieInterceptor.js` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | 7 `CubicBezierCurve`s per section (`bezierChain2`)                          | **Main use.** Starts as a rectangle flush on the hull and ends as the full wing outline (half-octagon back + two forward daggers, curved notch edges). Different start and end shapes (D-021).                             |
+| Variable-shape sweep                          | Wing `tie` (whole wing: neck → flare → wing)       | `src/parts/wings/tieInterceptor.js` `sectionAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`   | 11 `CubicBezierCurve`s per section (`bezierChain2`)                         | **Main use.** Starts as a rectangle flush on the hull and ends as the full wing outline (half-octagon back extended forward into two daggers, curved notch edges). Different start and end shapes (D-021).                 |
 | Variable-shape sweep                          | Wing `plane` (panel)                               | `src/parts/wings/planeWing.js` `airfoilAt` → `src/geometry/sweep.js` `buildVariableSweepGeometry`        | Airfoil = `CurvePath` of 2 `CubicBezierCurve`s (`bezierChain2`)             | Chord tapers, thickness ratio drops (`rootThickness` → 0.05) and camber flattens along the span: the shape changes, not just its scale. Round LE (C1), sharp TE knot. Secondary: same airfoil family at both ends (D-021). |
 
 **Does not count** (kept here so nobody relies on it):
@@ -190,12 +190,15 @@ so the map can import every variant without circular imports. Adding a variant =
 
 The lecturer judged the plane wing's variable-shape sweep not enough: its section is an airfoil at both ends, only
 its proportions change. The plane wing is kept as it is (it looks good and holds the curved-path sweep), and
-`wingVariants.tie` (`wings/tieInterceptor.js`), inspired by the TIE Interceptor, carries the technique clearly:
+`wingVariants.tie` (`wings/tieInterceptor.js`), inspired by the TIE Interceptor
+([reference](https://www.starwars.com/databank/tie-interceptor)), carries the technique clearly:
 
 - The whole wing is one variable-shape sweep per side along a straight path leaving the hull along +x. The section is
-  always 7 cubic Béziers (one per edge, same vertex count): a **rectangle** at the start, lying flat on the hull below
+  always 11 cubic Béziers (one per edge, same vertex count): a **rectangle** at the start, lying flat on the hull below
   the red side stripe (so the junction with the boxy fuselage is flush and smooth), and the **full wing outline** at
-  the end: a half-octagon at the back plus two mirrored triangles pointing forward, with curved notch edges.
+  the end: a half-octagon at the back whose top and bottom edges run forward to a shoulder, then narrow into two
+  mirrored daggers whose tips sit near the centre line (0.4 × span). Inner points at the tip height and the same
+  distance ahead of the socket give each dagger a straight inner edge before the curved notch edges.
 - Along the path: the root rectangle shrinks to a slim neck with an ease-out (fast at the hull, like a fillet), the
   neck stays constant (the hardpoint sits on top of it), then a short linear flare grows it into the wing outline,
   and a constant rim gives the wing edge. The end cap is the outer wing face.
@@ -205,7 +208,7 @@ its proportions change. The plane wing is kept as it is (it looks good and holds
 - Static (`opens: false`) and planar, without the reference's inward bend, so the wing face stays the end of the
   sweep. Params `pylonLength`, `span`, `tipReach`, `rearDepth` all rebuild it; `span` ≤ 1.6 keeps the lower tip
   ≥ 0.19 m above the deck.
-- The forward daggers are long, as in the reference: tip 1.46–3.0 m ahead of the neck centre (`tipReach` 0.4–1.5, default 1).
+- The forward daggers are long, as in the reference: tip 1.46–4.4 m ahead of the neck centre (`tipReach` 0.4–2.5, default 1.5 → 3.0 m).
 - The three sweep meshes are tagged `userData.technique = 'variableSweep'`; the part viewer's **sweep only** checkbox
   (in the wing's folder) hides everything else (struts, plates, hub, pad) and focuses the wing, to show the technique
   on its own.
