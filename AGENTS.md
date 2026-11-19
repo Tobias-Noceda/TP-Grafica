@@ -278,8 +278,8 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
   sphere (seamless). Atmosphere: larger back-face shell, additive fresnel glow.
 - Camera looking towards `+z` sees **`+x` on the left** of the screen — the planet sits at `+x` for the lower-left framing.
 - Starfield: two `THREE.Points` layers on a radius-3000 sphere with `sizeAttenuation: false`.
-- Lighting: `HemisphereLight` + 7 `PointLight`s (physical units, r155+): 4 on the ceiling in a 2×2 grid, plus one each
-  on the left, right and back walls. Keep the real-light count low for performance, and add lamps as emissive meshes
+- Lighting: `HemisphereLight` + 5 `PointLight`s (physical units, r155+): 2 on the ceiling on the ship's centre line
+  (`x = 0`, above its tail and nose at `z = ±4`), plus one each on the left, right and back walls. Keep the real-light count low for performance, and add lamps as emissive meshes
   instead. `RoomEnvironment` PMREM is set as `scene.environment` for metal reflections. Emissive lamp meshes + `UnrealBloomPass` give the glow; `OutputPass` applies ACES tone mapping.
   Custom `ShaderMaterial`s include `<tonemapping_fragment>` and `<colorspace_fragment>`.
 - No shadows yet (materials/lighting section of the brief still to be defined).

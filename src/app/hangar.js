@@ -18,6 +18,9 @@ const H = HANGAR.height;
 const HALF_W = W / 2;
 const HALF_D = D / 2;
 
+// Ceiling lights sit above the ship's tail and nose, at this distance from the platform centre along z
+const SHIP_LIGHT_Z = 4;
+
 /**
  * Builds the hangar shell: floor, walls, ceiling structure, front frame, decorative props and interior lights.
  * Everything is placed in hangar space (the returned group sits at the world origin).
@@ -332,12 +335,11 @@ function buildLights() {
 	lights.add(new THREE.HemisphereLight(0xa8b8d0, 0x2a2420, 0.6));
 
 	// Real lights are kept to a minimum for performance; the lamps are emissive meshes that glow through bloom.
-	// Ceiling: 2x2 grid, each light centred in one quarter of the floor
-	for (const x of [-W / 4, W / 4]) {
-		for (const z of [-D / 4, D / 4]) {
-			const light = new THREE.PointLight(0xffd2a0, 180, 0, 2);
-			lights.add(place(light, x, H - 2.5, z));
-		}
+	// Ceiling: two lights on the ship's centre line (x = 0), one above its tail and one above its nose. The ship sits
+	// on the platform at the origin, nose towards +z, spanning about z = -4.1 to 4.2.
+	for (const z of [-SHIP_LIGHT_Z, SHIP_LIGHT_Z]) {
+		const light = new THREE.PointLight(0xffd2a0, 180, 0, 2);
+		lights.add(place(light, 0, H - 2.5, z));
 	}
 
 	// Walls: one warm wash centred on each side wall and on the back wall, matching the lamp strips
