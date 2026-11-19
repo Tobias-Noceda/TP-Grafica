@@ -1,4 +1,5 @@
 import { planeWing } from './wings/planeWing.js';
+import { tieInterceptor } from './wings/tieInterceptor.js';
 import { xWingSFoils } from './wings/xWingSFoils.js';
 
 /**
@@ -12,4 +13,5 @@ import { xWingSFoils } from './wings/xWingSFoils.js';
 export const wingVariants = {
 	xwing: xWingSFoils,
 	plane: planeWing,
+	tie: tieInterceptor,
 };

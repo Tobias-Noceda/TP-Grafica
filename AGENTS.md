@@ -109,8 +109,9 @@ src/
     curves.js            bezierChain2, sampleShape (implemented); more factories as needed
   parts/
     fuselage.js          fixed X-wing style design (primitives only) + cockpit + pilot + sockets + 2 gears
-    wings.js             wingVariants map only (3 variants planned, each with params)
+    wings.js             wingVariants map only (3 variants, each with params)
     wings/               one file per variant: xWingSFoils.js (primitive S-foils), planeWing.js (variable sweep),
+                         tieInterceptor.js (variable sweep: hull rectangle → wing outline),
                          common.js (root chord, fairing, top hardpoint shared by the wings)
     thrusters.js         thrusterVariants map only (2 variants, body + exhaust zone)
     propulsors/          one file per thruster variant: rearEngine.js (revolution, rear-only)
@@ -124,8 +125,8 @@ src/
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (wings, weapons, thrusters),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/rearEngine.js`,
-`parts/weapons/machineGun.js`, `parts/wings/` (xwing, plane) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep, a
-third wing, second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras,
+`parts/weapons/machineGun.js`, `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
+second thruster — planned in `QUAD_THRUSTER_PLAN.md` —, second weapon, crane, assembly, cameras,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -227,7 +228,7 @@ Each variant exports a builder with a uniform contract:
 export const planeWing = { label, opens, defaults: { span, tipChord, ... }, paramSchema, build(params, materials) → THREE.Group };
 
 // parts/wings.js
-export const wingVariants = { xwing: xWingSFoils, plane: planeWing };
+export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInterceptor };
 ```
 
 - `build()` returns a `Group` whose **origin is the attach point** and whose local axes match the fuselage socket.
@@ -238,7 +239,10 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing };
   `xwing` (default, implemented): per side an upper and a lower flat, squared panel (`slab`, a deformed `BoxGeometry`,
   no curves) on hinges rotating about z (fairing + chrome pins); param `span`; opens into an X with the `O` key (starts
   closed). `plane` (implemented): one fixed panel per side, a variable-shape sweep of a Bézier airfoil along a Bézier
-  span path; params `span`, `tipChord`, `sweep`, `rootThickness`.
+  span path; params `span`, `tipChord`, `sweep`, `rootThickness`. `tie` (implemented, TIE Interceptor inspired, static):
+  the whole wing is one variable-shape sweep whose section goes from a rectangle flush on the hull to the full wing
+  outline (half-octagon back + two forward daggers); hardpoint on top of the neck; params `pylonLength`, `span`,
+  `tipReach`, `rearDepth` (D-021).
   The left and right wings may be mirrored copies, using `scale.x = -1` on the parent group. Flip the winding or use
   `side: DoubleSide` when mirroring.
 - Thrusters: two variants, each with a clear **body** and **exhaust** zone. `build(params, materials, { outward })`
@@ -358,6 +362,8 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
 - Wings that open are interactive like in the main scene: clicking them (raycast on `pointerup`, ignored after an
   orbit drag), the `O` key or the folder's button toggles them with the same eased 1.2 s animation, and the `open`
   slider follows it.
+- Pieces whose builder tags meshes with `userData.technique` (today the TIE wing's variable sweep) get a **sweep only**
+  checkbox in their folder: it hides the untagged meshes and focuses the piece. Tag new technique meshes the same way.
 - Lights are kept low so the white hull stays under the bloom threshold; only emissive parts glow.
 - Still to add: UV checker texture, a part type → variant picker if the brief needs one beyond the gallery.
 - Wireframe: `material.wireframe = true`, or overlay `LineSegments(new WireframeGeometry(geo))`.

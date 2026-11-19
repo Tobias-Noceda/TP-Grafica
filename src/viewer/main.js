@@ -159,8 +159,25 @@ function rebuild(piece, relayout = true) {
 	piece.object = piece.build(piece.params);
 	piece.holder.add(piece.object);
 	applyPose(piece);
+	applyTechniqueView(piece);
 	if (relayout) layout();
 	updateNormals();
+}
+
+/**
+ * With `piece.techniqueOnly`, only the meshes a builder tagged with `userData.technique` stay visible (e.g. the TIE
+ * wing's variable-shape sweep without its struts, plates, hub and pad), to show the surface technique on its own.
+ */
+function applyTechniqueView(piece) {
+	piece.object.traverse((child) => {
+		if (child.isMesh) child.visible = !piece.techniqueOnly || Boolean(child.userData.technique);
+	});
+}
+
+function hasTechnique(object) {
+	let found = false;
+	object.traverse((child) => (found ||= Boolean(child.isMesh && child.userData.technique)));
+	return found;
 }
 
 function applyPose(piece) {
@@ -176,8 +193,11 @@ function layout() {
 	ROWS_Z.forEach((z, row) => {
 		const inRow = pieces.filter((piece) => piece.row === row);
 		const boxes = inRow.map((piece) => {
+			// Measure in the holder's frame: Box3.setFromObject is in world space, so the holder must be back at the
+			// origin, or its previous slot leaks into the box and every piece collapses to the centre on relayout
+			piece.holder.position.set(0, 0, 0);
 			piece.object.position.set(0, 0, 0);
-			piece.object.updateMatrixWorld(true);
+			piece.holder.updateMatrixWorld(true);
 			return new THREE.Box3().setFromObject(piece.object);
 		});
 		const total = boxes.reduce((sum, box) => sum + box.max.x - box.min.x, 0) + GAP * (inRow.length - 1);
@@ -233,7 +253,7 @@ function updateNormals() {
 	if (!view.normals) return;
 	gallery.updateMatrixWorld(true);
 	gallery.traverse((child) => {
-		if (child.isMesh) normalsHelpers.add(new VertexNormalsHelper(child, 0.04, 0x00ff88));
+		if (child.isMesh && child.visible) normalsHelpers.add(new VertexNormalsHelper(child, 0.04, 0x00ff88));
 	});
 }
 
@@ -305,6 +325,14 @@ function createMenu() {
 		const schema = piece.variant?.paramSchema ?? {};
 		if (!Object.keys(schema).length && piece.open === undefined && piece.deploy === undefined) continue;
 		const folder = pane.addFolder({ title: piece.label, expanded: false });
+		if (hasTechnique(piece.object)) {
+			piece.techniqueOnly = false;
+			folder.addBinding(piece, 'techniqueOnly', { label: 'sweep only' }).on('change', () => {
+				applyTechniqueView(piece);
+				updateNormals();
+				if (piece.techniqueOnly) focus(piece.id);
+			});
+		}
 		for (const [key, { label, min, max, step }] of Object.entries(schema)) {
 			folder.addBinding(piece.params, key, { label, min, max, step }).on('change', () => rebuild(piece));
 		}
