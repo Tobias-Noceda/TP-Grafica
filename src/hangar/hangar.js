@@ -10,6 +10,8 @@ export const HANGAR = {
 	depth: 48,
 	height: 16,
 	baySpacing: 6,
+	// Crane runway girders at x = ±craneRailX: wide enough for the crane to reach the floor beside the platform
+	craneRailX: 15,
 };
 
 const W = HANGAR.width;
@@ -247,7 +249,7 @@ function buildBackWall({ materials, tiles }) {
 }
 
 /**
- * Ceiling structure: transverse beams at every bay, two longitudinal girders (future crane rails)
+ * Ceiling structure: transverse beams at every bay, two longitudinal girders (crane runway, src/app/crane.js)
  * and rows of light panels between the beams.
  */
 function buildCeiling({ materials, tiles }) {
@@ -262,7 +264,7 @@ function buildCeiling({ materials, tiles }) {
 		ceiling.add(place(beam, 0, H - 0.5, z));
 	}
 
-	for (const x of [-W / 4, W / 4]) {
+	for (const x of [-HANGAR.craneRailX, HANGAR.craneRailX]) {
 		const girder = box(0.7, 0.8, D, materials.darkMetal, tiles.metal);
 		ceiling.add(place(girder, x, H - 1.4, 0));
 	}
@@ -339,9 +341,10 @@ function buildLights() {
 	// Ceiling: two lights on the ship's centre line (x = 0), one above its tail and one above its nose. The ship sits
 	// on the platform at the origin, nose towards +z, spanning about z = -4.1 to 4.2.
 	// Dimmer than they would be alone: the shadow spot light (src/app/shadows.js) adds to them above the ship.
+	// Hung below the crane (src/app/crane.js), which would otherwise run through them.
 	for (const z of [-SHIP_LIGHT_Z, SHIP_LIGHT_Z]) {
 		const light = new THREE.PointLight(0xffd2a0, 60, 0, 2);
-		lights.add(place(light, 0, H - 2.5, z));
+		lights.add(place(light, 0, H - 4, z));
 	}
 
 	// Walls: one warm wash centred on each side wall and on the back wall, matching the lamp strips

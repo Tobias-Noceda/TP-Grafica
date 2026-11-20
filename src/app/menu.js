@@ -16,7 +16,7 @@ export function createMenu(
 	const pane = new Pane({ title: 'Astillero orbital' });
 
 	const view = pane.addFolder({ title: 'View' });
-	view.addBinding(config.view, 'camera', { label: 'camera (1-6, C)', options: cameraOptions }).on('change', (event) =>
+	view.addBinding(config.view, 'camera', { label: 'camera (1-7, C)', options: cameraOptions }).on('change', (event) =>
 		onCameraChange(event.value)
 	);
 	view.addBinding(config.view, 'shadows', {

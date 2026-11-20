@@ -15,7 +15,7 @@ Two pages share the same geometry modules:
 
 | Page          | Purpose                                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `app.html`    | Main scene: hangar, platform, crane, assembly sequence, menu, 6 cameras.                                                 |
+| `app.html`    | Main scene: hangar, platform, crane, assembly sequence, menu, 7 cameras.                                                 |
 | `piezas.html` | Part viewer: pick part type and variant, toggle solid/wireframe, edit wing params, see the rebuild live. Orbital camera. |
 
 **Hard constraints from the brief (do not violate):**
@@ -90,14 +90,14 @@ app.html                 main scene entry
 piezas.html              part viewer entry
 public/textures/         imported PBR textures (Poly Haven, CC0) — see CREDITS.md
 src/
-  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, O, C, 1-6)
+  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, O, C, 1-7, arrows → crane)
   app/materials.js       texture loading + shared material library (hangar + ship materials)
   hangar/hangar.js       hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
   hangar/platform.js     central assembly platform (PLATFORM dimensions, mountPoint on the deck)
   scene/space.js         starfield, procedural gas giant + atmosphere shaders
-  app/crane.js           hierarchical crane + IK-free positional API
+  app/crane.js           hierarchical underhung crane with magnet tip, arrow-key driven with inertia + pendulum sway
   app/assembly.js        state machine for the pick/lift/move/lower/release sequence
-  app/cameras.js         6 cameras + switching
+  app/cameras.js         7 cameras + switching
   app/menu.js            Tweakpane UI, top-right (wings type/params/open + weapon and thruster type/position; generate, pause, camera… to add)
   app/loadout.js         wings + which part kind sits on which hardpoint (incl. the wing one); equip/unequip, disposal
   viewer/main.js         piezas.html entry (shares src/parts/*)
@@ -125,11 +125,11 @@ src/
 ```
 
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (view, wings, weapons, thrusters),
-`app/cameras.js` (6 cameras), `app/shadows.js` (spot + contact shadow),
+`app/cameras.js` (7 cameras), `app/shadows.js` (spot + contact shadow), `app/crane.js` (manual drive, fixed cable),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/` (rearEngine, quadBlock),
 `parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
-crane, assembly,
+crane hoisting, assembly,
 registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
@@ -296,9 +296,15 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
 
 ### 5.5 Scene graph and hierarchy
 
-- **Crane** (≥3 dependency levels): `rails (fixed) → bridge (moves along X) → trolley (moves along Z) → hoist/cable (scales/translates in Y) → gripper (claws rotate)`. Moving a parent must visibly carry its children.
+- **Crane** (implemented, D-026, ≥3 dependency levels): `runway rails (fixed, under the girders at x = ±15) → bridge
+(moves along Z) → trolley (moves along X) → swing (pivot at the hoist drum, pendulum sway) → cable (fixed length
+for now) + magnet → attachPoint / cameraMount`. Underhung: it hangs below the girders; magnet face at y ≈ 5.9.
+  Arrow keys drive it (←/→ = ±x, ↑/↓ = ±z) through `crane.userData.setInput({ x, z })`; `update(dt)` ramps the speed
+  (1.5 m/s², max 3.5 m/s trolley / 4 m/s bridge), brakes before the end stops (`CRANE_LIMITS`) and integrates a near-critically damped (anti-sway) pendulum per
+  axis from the carriage acceleration. The tip is an **electromagnet**, not a claw: no claw joints to animate;
+  `setMagnet(on)` lights its ring. Moving a parent must visibly carry its children.
 - **Pick-up / drop-off** with `Object3D.attach(child)`, which reparents while keeping the world transform:
-    - grab: `gripper.attach(part)`
+    - grab: `crane.userData.attachPoint.attach(part)` (magnet face)
     - release: `socket.attach(part)`, then snap `part.position.set(0,0,0); part.quaternion.identity()`
 - World queries: `getWorldPosition`, `getWorldQuaternion`, `localToWorld`, `worldToLocal`, `updateMatrixWorld(true)`
   before reading.
@@ -329,17 +335,23 @@ IDLE → MOVE_OVER_PART → LOWER → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET �
 | --- | -------------- | -------------------------------------------------------------------------------------------------- |
 | 1   | Hangar orbital | `OrbitControls`, target at the hangar centre                                                       |
 | 2   | Ship orbital   | `OrbitControls`, target at the fuselage world position                                             |
-| 3   | Crane follow   | Child of the trolley/gripper, or copy its world position each frame +`lookAt(gripper)`             |
+| 3   | Crane orbital  | `OrbitControls` around the magnet, target and camera carried along with it every frame             |
 | 4   | Pilot          | `PerspectiveCamera` added to `fuselage.pilotCameraAnchor`, looking at the dashboard and windshield |
 | 5   | Ship chase     | Offset behind the ship in its local frame (`localToWorld`), smoothed with lerp                     |
 | 6   | First person   | `PointerLockControls` + WASD, Y clamped to eye height                                              |
+| 7   | Crane magnet   | Child of the crane's `cameraMount` at the centre of the magnet face, looking down (rides the sway) |
 
 `C` cycles through the cameras. On resize, update the `aspect` of **every** perspective camera and call
 `updateProjectionMatrix()`. Enable only the active camera's controls.
 
-Implemented in `app/cameras.js` (`createCameras({ renderer, fuselage, craneAnchor, hint })`); the menu's View folder
-lists them too and follows the keys. Camera 3 follows `craneAnchor`: until the crane exists, `main.js` passes a stub
-`Object3D` on the ceiling above the platform; the crane must pass its gripper/trolley instead. Camera 6 locks the
+Implemented in `app/cameras.js` (`createCameras({ renderer, fuselage, crane, hint })`); the menu's View folder
+lists them too and follows the keys. Cameras 2 and 3 share `followOrbital` (orbit around a moving target, keeping the
+view offset; camera 3 re-tracks the magnet every frame). Camera 7 is fixed at the centre of the magnet face, looking down tilted 20° towards
+`+z` (screen up = `+z`, screen left = `+x`, same as the arrows); it inherits the bridge/trolley inertia and the
+pendulum sway, plus a small motor vibration scaled by crane speed (`CRANE_SHAKE`). Like the pilot camera it can be looked around
+with the mouse (`CRANE_LOOK`): drag turns it freely in yaw, pitch from straight down to 5° below the horizon (25° when
+looking back over the magnet disc), wheel zooms (fov 30–90), double-click recentres. Both use the shared `dragLook`
+helper in `cameras.js`. Camera 6 locks the
 pointer on click (hint `#walk-hint` in `app.html`), walks at 4 m/s (Shift 8), stays at eye height inside the walls and
 outside the platform square. Camera 4 is a head-turn, not a fixed view: drag to look (yaw ±80°, pitch +40° / −30°, with the
 down limit shrinking to −8° as the head turns so it never looks into the pilot's shoulder), wheel zooms (fov 35–80),
@@ -352,7 +364,7 @@ here (the procedural-only rule applies to wings, thrusters and weapons).
 
 - Hangar: interior `HANGAR = { width: 40, depth: 48, height: 16, baySpacing: 6 }`, floor at `y = 0`, back wall at
   `z = -24`, opening at `z = +24`. Built from primitives: columns with lamp strips, catwalks, crates, X-braced back
-  panels, ceiling beams, two longitudinal girders at `x = ±10` (intended as future crane rails), cyan-lit front frame.
+  panels, ceiling beams, two longitudinal girders at `x = ±craneRailX = ±15` (the crane runway), cyan-lit front frame.
 - Textures: Poly Haven PBR sets loaded in `materials.js`. Boxes get world-scale UVs (`setBoxProjectedUVs`), so one
   material tiles consistently at its real-world `tileSize` regardless of mesh dimensions.
 - Planet: `SphereGeometry` + `ShaderMaterial` with its own sun direction (so it does not light the hangar interior);

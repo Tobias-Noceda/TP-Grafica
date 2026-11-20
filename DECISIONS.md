@@ -294,3 +294,20 @@ layer 1, two blur passes, transparent plane on the deck), which works on any mat
 `markDirty()` is called (`shadowMap.autoUpdate = false`), so a still scene costs no shadow pass. The two ceiling point
 lights over the ship were dimmed (180 → 60) to make room for the spot. Quality Low = 1024 spot / 256 contact, High =
 2048 / 512, Off disables both.
+
+### D-026 Underhung crane with a magnet tip, fixed cable and pendulum sway
+
+The ceiling girders at x = ±15 (`HANGAR.craneRailX`) run along z and the ceiling beams sit right on top of them, so the crane is
+**underhung**: the bridge spans x, rolls along z under the girders, and the trolley runs along x under the bridge (the
+inverse of the axes first sketched in AGENTS §5.5). The girders were moved out from x = ±10 to ±15 so the trolley
+reaches x = ±13.5: the platform covers |x| ≤ 5, which leaves a floor strip about 8 m wide on each side for the parts
+waiting to be mounted. The tip is an **electromagnet** instead of a claw: picking a part
+up is `attachPoint.attach(part)` and dropping it is `socket.attach(part)`, with no claw joints to pose around each part
+shape. The cable has a fixed length (5.2 m, magnet face at y ≈ 5.9, above the ship) until the assembly needs hoisting.
+For a realistic ride from the magnet camera (7), the carriages accelerate and brake at 1.5 m/s² up to 3.5 m/s (trolley) / 4 m/s (bridge)
+(braking cap v ≤ √(2·a·d) so they ease into the end stops) and the magnet hangs from a pendulum per axis driven by the
+carriage acceleration (θ'' = -(g/L)·sin θ - (a/L)·cos θ - c·θ'), substepped at 120 Hz. The damping c = 2.2 /s is close
+to critical, like an anti-sway hoist: the magnet leans ~7° while accelerating and settles in about 3 s after a stop
+instead of swinging back and forth, so the crane feels responsive. The two ceiling point lights over the ship were moved
+down from y = 13.5 to 12 so the bridge and trolley do not pass through them. The crane does not cast shadows (it would
+darken the ship under the spot light).

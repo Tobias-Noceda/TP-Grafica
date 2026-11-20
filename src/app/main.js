@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 import { createMaterials } from './materials.js';
-import { buildHangar, HANGAR } from '../hangar/hangar.js';
+import { buildHangar } from '../hangar/hangar.js';
 import { buildPlatform } from '../hangar/platform.js';
 import { buildSpace } from '../scene/space.js';
 import { buildFuselage } from '../parts/fuselage.js';
@@ -14,8 +14,10 @@ import { createLoadout, PART_KINDS } from './loadout.js';
 import { createMenu } from './menu.js';
 import { createCameras } from './cameras.js';
 import { setupShadows } from './shadows.js';
+import { buildCrane } from './crane.js';
 
 let container, renderer, scene, cameras, renderPass, composer, bloomPass, space, fuselage, loadout, shadows, menu;
+let crane;
 const clock = new THREE.Clock();
 
 // Ship configuration edited by the menu
@@ -30,6 +32,16 @@ const config = {
 // Gear: 0 = retracted, 1 = deployed (T). Wings: 0 = closed, 1 = open in X (O); parked closed.
 const gear = { t: 1, target: 1, duration: 2 };
 const wingFold = { t: 0, target: 0, duration: 1.2 };
+
+// Arrow keys drive the crane in the horizontal plane: left/right along x (left = +x, as seen from the hangar camera),
+// up/down along z (up = +z, towards the opening)
+const CRANE_KEYS = {
+	ArrowLeft: ['x', 1],
+	ArrowRight: ['x', -1],
+	ArrowUp: ['z', 1],
+	ArrowDown: ['z', -1],
+};
+const craneKeys = new Set();
 
 function setupThreeJs() {
 	container = document.getElementById('container3D');
@@ -74,13 +86,12 @@ function buildScene() {
 	shadows.addContactShadow(platform.userData.mountPoint);
 	const shipShadows = () => shadows.enableOn(fuselage, { cast: true });
 
-	// Placeholder for the crane's moving element until the crane exists: on the ceiling, above the platform
-	const craneAnchor = new THREE.Object3D();
-	craneAnchor.name = 'crane-anchor';
-	craneAnchor.position.set(0, HANGAR.height - 2, 0);
-	scene.add(craneAnchor);
+	// The crane does not cast: it would black out the ship under the spot light. Once it carries parts, moving them
+	// must call shadows.markDirty().
+	crane = buildCrane(materials);
+	scene.add(crane);
 
-	cameras = createCameras({ renderer, fuselage, craneAnchor, hint: document.getElementById('walk-hint') });
+	cameras = createCameras({ renderer, fuselage, crane, hint: document.getElementById('walk-hint') });
 	renderPass.camera = cameras.active;
 	cameras.onChange((index) => {
 		renderPass.camera = cameras.active;
@@ -135,11 +146,29 @@ function onResize() {
 function onKeyDown(event) {
 	// Typing in a menu field must not switch cameras or toggle parts
 	if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+	if (event.code in CRANE_KEYS) {
+		event.preventDefault();
+		craneKeys.add(event.code);
+		updateCraneInput();
+	}
 	if (event.code === 'KeyT') toggle(gear);
 	if (event.code === 'KeyO') toggle(wingFold);
 	if (event.code === 'KeyC') cameras.next();
-	const digit = /^Digit([1-6])$/.exec(event.code);
+	const digit = /^Digit([1-7])$/.exec(event.code);
 	if (digit) cameras.set(Number(digit[1]) - 1);
+}
+
+function onKeyUp(event) {
+	if (craneKeys.delete(event.code)) updateCraneInput();
+}
+
+function updateCraneInput() {
+	const input = { x: 0, z: 0 };
+	for (const code of craneKeys) {
+		const [axis, sign] = CRANE_KEYS[code];
+		input[axis] += sign;
+	}
+	crane.userData.setInput(input);
 }
 
 function toggle(state) {
@@ -157,6 +186,7 @@ function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();
 
+	crane.userData.update(dt);
 	cameras.update(dt);
 	space.update(dt);
 	// Moving casters re-render the shadow map; idle frames skip the shadow pass
@@ -176,5 +206,10 @@ setupThreeJs();
 buildScene();
 window.addEventListener('resize', onResize);
 window.addEventListener('keydown', onKeyDown);
+window.addEventListener('keyup', onKeyUp);
+window.addEventListener('blur', () => {
+	craneKeys.clear();
+	updateCraneInput();
+});
 onResize();
 animate();
