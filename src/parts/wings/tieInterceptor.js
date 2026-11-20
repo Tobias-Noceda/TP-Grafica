@@ -41,6 +41,8 @@ const PLATE_SCALE = 0.86; // red plates shrunk about their centroid, leaving the
 const PLATE_DEPTH = 0.015;
 const STRUT = { width: 0.07, depth: 0.05 };
 const HUB = { radius: 0.24, height: 0.05 };
+const SUPPORT_V = 0.5; // floor jig station: middle of the straight neck, clear of the wing's floor pads
+const FLANGE = { margin: 0.05, thickness: 0.03 }; // dark mounting flange around the root rectangle
 
 /**
  * The whole wing is one variable-shape sweep per side along a straight path leaving the hull along +x. Its section
@@ -68,11 +70,11 @@ function buildTieWing(params, materials) {
 	const shapeAt = (v) => sectionAt(v, outline);
 
 	const pieces = [
-		{ from: 0, to: FLARE_START, levels: 40, material: 'hullPaint' },
+		{ from: 0, to: FLARE_START, levels: 40, material: 'hullPaint', start: true },
 		{ from: FLARE_START, to: FLARE_END, levels: 8, material: 'hullRed' },
 		{ from: FLARE_END, to: 1, levels: 2, material: 'hullPaint', end: true },
 	];
-	for (const { from, to, levels, material, end } of pieces) {
+	for (const { from, to, levels, material, start, end } of pieces) {
 		const geometry = buildVariableSweepGeometry({
 			shapeAt,
 			path,
@@ -80,7 +82,8 @@ function buildTieWing(params, materials) {
 			levels,
 			vStart: from,
 			vEnd: to,
-			caps: { start: false, end: Boolean(end) },
+			// The start cap closes the root, so the wing is not hollow when it is off the hull
+			caps: { start: Boolean(start), end: Boolean(end) },
 		});
 		const mesh = new THREE.Mesh(geometry, materials[material]);
 		// Tagged so the part viewer can show the technique on its own (the rest are details on top of it)
@@ -88,6 +91,7 @@ function buildTieWing(params, materials) {
 		wing.add(mesh);
 	}
 
+	wing.add(buildRootFlange(materials));
 	wing.add(buildStruts(outline, pylonLength, materials));
 	wing.add(buildOuterFace(outline, pylonLength, materials));
 
@@ -95,9 +99,27 @@ function buildTieWing(params, materials) {
 	const [frame] = levelMatrices(path, [HARDPOINT_V], { method: 'up' });
 	const socket = addTopHardpoint(wing, new THREE.Vector3(0, NECK.halfHeight, 0).applyMatrix4(frame), materials);
 
-	wing.userData = { sockets: { top: socket } };
+	// Where a floor jig holds the wing level while it waits for the crane: under the straight neck
+	const support = {
+		point: new THREE.Vector3(SUPPORT_V * pylonLength, -NECK.halfHeight, 0),
+		halfWidth: NECK.halfLength,
+	};
+
+	wing.userData = { sockets: { top: socket }, support };
 
 	return wing;
+}
+
+/**
+ * Dark mounting flange on the root face: a thin plate slightly larger than the root rectangle, on the hull side.
+ */
+function buildRootFlange(materials) {
+	const { margin, thickness } = FLANGE;
+	const geometry = new THREE.BoxGeometry(thickness, 2 * (ROOT.halfHeight + margin), 2 * (ROOT.halfLength + margin));
+	const flange = new THREE.Mesh(geometry, materials.hullDark);
+	flange.name = 'root-flange';
+	flange.position.x = thickness / 2;
+	return flange;
 }
 
 // Outline vertex indices (counter-clockwise). Every outline (root, neck, wing) uses this order and count.

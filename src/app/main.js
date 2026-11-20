@@ -11,13 +11,14 @@ import { buildPlatform } from '../hangar/platform.js';
 import { buildSpace } from '../scene/space.js';
 import { buildFuselage } from '../parts/fuselage.js';
 import { createLoadout, PART_KINDS } from './loadout.js';
+import { createFloorLayout } from './layout.js';
 import { createMenu } from './menu.js';
 import { createCameras } from './cameras.js';
 import { setupShadows } from './shadows.js';
 import { buildCrane } from './crane.js';
 
 let container, renderer, scene, cameras, renderPass, composer, bloomPass, space, fuselage, loadout, shadows, menu;
-let crane;
+let crane, layout;
 const clock = new THREE.Clock();
 
 // Ship configuration edited by the menu
@@ -26,6 +27,8 @@ const config = {
 	weapon: { variant: 'machineGun', hardpoint: 'nose' },
 	thruster: { variant: 'rearEngine', hardpoint: 'rear' },
 	view: { camera: 0, shadows: 'low' },
+	// Where the pieces are: mounted on the ship or spread on the hangar floor (preview for the crane assembly)
+	assembly: { layout: 'ship' },
 };
 
 // Toggle animations: `t` moves towards `target` in `duration` seconds and is applied with easing.
@@ -99,20 +102,39 @@ function buildScene() {
 		menu?.refresh();
 	});
 
-	// Parts are mounted instantly until the crane assembles the ship
+	// Parts are pieces: mounted on the ship, or laid on the floor for the crane (menu Assembly → pieces)
 	loadout = createLoadout(fuselage, materials);
-	const equipWings = () => {
-		loadout.equipWings(config.wing.variant, config.wing.params);
-		shipShadows();
-	};
-	const equipPart = (kind) => () => {
-		try {
-			loadout.equip(kind, config[kind].variant, config[kind].hardpoint);
-		} catch (error) {
-			console.warn(error.message);
+	layout = createFloorLayout(scene, materials, shadows);
+	const applyLayout = () => {
+		if (config.assembly.layout === 'floor') {
+			// Wings park closed: their S-foil hardpoints would move away from the measured floor pose
+			wingFold.t = wingFold.target = 0;
+			loadout.setWingsOpen(0);
+			layout.placeOnFloor(loadout.pieces(), loadout);
+		} else {
+			layout.placeOnShip(loadout.pieces(), loadout);
 		}
 		shipShadows();
+		shadows.markDirty();
 	};
+	// Edits need the mounted ship (builders and wing hardpoint sockets live on it), so go back to it first and
+	// restore the floor layout afterwards
+	const edit = (change) => () => {
+		const onFloor = config.assembly.layout === 'floor';
+		if (onFloor) layout.placeOnShip(loadout.pieces(), loadout);
+		change();
+		shipShadows();
+		if (onFloor) applyLayout();
+	};
+	const equipWings = edit(() => loadout.equipWings(config.wing.variant, config.wing.params));
+	const equipPart = (kind) =>
+		edit(() => {
+			try {
+				loadout.equip(kind, config[kind].variant, config[kind].hardpoint);
+			} catch (error) {
+				console.warn(error.message);
+			}
+		});
 	const equipWeapon = equipPart('weapon');
 	const equipThruster = equipPart('thruster');
 	equipWings();
@@ -120,7 +142,11 @@ function buildScene() {
 	equipThruster();
 	menu = createMenu(config, {
 		onWingChange: equipWings,
-		onWingToggle: () => toggle(wingFold),
+		onWingToggle: () => toggleWings(),
+		onLayoutChange: (value) => {
+			config.assembly.layout = value;
+			applyLayout();
+		},
 		onWeaponChange: equipWeapon,
 		onThrusterChange: equipThruster,
 		cameraOptions: Object.fromEntries(cameras.list.map(({ label }, i) => [`${i + 1}. ${label}`, i])),
@@ -152,7 +178,7 @@ function onKeyDown(event) {
 		updateCraneInput();
 	}
 	if (event.code === 'KeyT') toggle(gear);
-	if (event.code === 'KeyO') toggle(wingFold);
+	if (event.code === 'KeyO') toggleWings();
 	if (event.code === 'KeyC') cameras.next();
 	const digit = /^Digit([1-7])$/.exec(event.code);
 	if (digit) cameras.set(Number(digit[1]) - 1);
@@ -169,6 +195,11 @@ function updateCraneInput() {
 		input[axis] += sign;
 	}
 	crane.userData.setInput(input);
+}
+
+// Wings stay closed while the pieces are on the floor
+function toggleWings() {
+	if (config.assembly.layout !== 'floor') toggle(wingFold);
 }
 
 function toggle(state) {

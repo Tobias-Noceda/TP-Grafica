@@ -14,7 +14,14 @@ import * as THREE from 'three';
 export function mountPart(socket, part) {
 	if (socket.userData.side === 'R') part.scale.x = -1;
 	socket.add(part);
-	if (socket.userData.cover) socket.userData.cover.visible = false;
+	showCover(socket, false);
+}
+
+/**
+ * Shows or hides the socket's cover, if it has one.
+ */
+export function showCover(socket, visible) {
+	if (socket.userData.cover) socket.userData.cover.visible = visible;
 }
 
 /**
@@ -23,7 +30,7 @@ export function mountPart(socket, part) {
 export function unmountPart(socket) {
 	const parts = [...socket.children];
 	if (parts.length) socket.remove(...parts);
-	if (socket.userData.cover) socket.userData.cover.visible = true;
+	showCover(socket, true);
 	return parts;
 }
 

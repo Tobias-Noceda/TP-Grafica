@@ -1,5 +1,5 @@
 import { HARDPOINTS } from '../parts/fuselage.js';
-import { mountPart, unmountPart } from '../parts/sockets.js';
+import { mountPart, showCover } from '../parts/sockets.js';
 import { thrusterVariants } from '../parts/thrusters.js';
 import { weaponVariants } from '../parts/weapons.js';
 import { wingVariants } from '../parts/wings.js';
@@ -32,21 +32,52 @@ export function hardpointsFor(kind, variantId) {
 	);
 }
 
+const KIND_ORDER = ['wing', 'thruster', 'weapon'];
+const KIND_LABELS = { wing: 'Wing', thruster: 'Thruster', weapon: 'Weapon' };
+
+function hasMesh(object) {
+	let found = false;
+	object.traverse((child) => {
+		if (child.isMesh) found = true;
+	});
+	return found;
+}
+
 /**
  * Ship loadout: the wings on `socket_wing_L/R`, and which part kind sits on which hardpoint. Each kind is mounted on
  * every socket of its hardpoint (a mirrored pair), and a hardpoint holds one kind at a time.
  *
- * Until the crane exists, parts are mounted instantly. Replaced parts have their geometries disposed; materials are
- * shared with the rest of the scene and are kept.
+ * Every non-empty built part is also a **piece** (see `pieces()`): a plain object that remembers its socket and its
+ * mounted pose, so another module can detach it (`detachPiece`, e.g. onto the hangar floor or a crane gripper) and mount
+ * it back (`mountPiece`). Builders may return an empty group for one socket of a pair (a shared engine built by the
+ * left socket); those are still mounted but get no piece. Replaced parts have their geometries disposed whether they
+ * are mounted or detached; materials are shared with the rest of the scene and are kept.
  */
 export function createLoadout(fuselage, materials) {
 	const mounted = {}; // kind → { variantId, hardpointId, params }
+	const records = {}; // kind → [{ part, socket, piece | null }] every part built for the kind, empty ones included
+	let wingRecords = [];
 	let wings = [];
 	let wingsOpen = 0;
 
 	function socketsOf(hardpointId) {
 		if (hardpointId === 'wing') return wings.map((wing) => wing.userData.sockets?.top).filter(Boolean);
 		return HARDPOINTS[hardpointId].sockets.map((name) => fuselage.userData.sockets[name]);
+	}
+
+	function makePiece({ kind, variantId, hardpointId, side, socket, part }) {
+		return {
+			id: kind === 'wing' ? `wing_${side}` : `${kind}_${hardpointId}_${side}`,
+			label: [KIND_LABELS[kind], side === 'C' ? null : side].filter(Boolean).join(' '),
+			kind,
+			variantId,
+			hardpointId,
+			side,
+			socket,
+			part,
+			local: { position: part.position.clone(), quaternion: part.quaternion.clone(), scale: part.scale.clone() },
+			mounted: true,
+		};
 	}
 
 	function equip(kind, variantId, hardpointId, params = {}) {
@@ -64,18 +95,39 @@ export function createLoadout(fuselage, materials) {
 
 		unequip(kind);
 		const variant = PART_KINDS[kind][variantId];
-		for (const socket of sockets) {
+		records[kind] = sockets.map((socket) => {
 			const { outward, clearance, side, toPairCentre } = socket.userData;
 			const options = { outward, clearance, side, toPairCentre };
-			mountPart(socket, variant.build({ ...variant.defaults, ...params }, materials, options));
-		}
+			const part = variant.build({ ...variant.defaults, ...params }, materials, options);
+			mountPart(socket, part);
+			let piece = null;
+			if (hasMesh(part)) {
+				// On the wing hardpoint the socket's own side is always 'L', so use the wing's side to tell them apart
+				const pieceSide = hardpointId === 'wing' ? (wings.length > 1 ? sideOfWing(socket) : 'L') : side;
+				piece = makePiece({ kind, variantId, hardpointId, side: pieceSide, socket, part });
+			}
+			return { part, socket, piece };
+		});
 		mounted[kind] = { variantId, hardpointId, params };
+	}
+
+	function sideOfWing(socket) {
+		return wings.findIndex((wing) => wing.userData.sockets?.top === socket) === 1 ? 'R' : 'L';
+	}
+
+	function removeRecords(list) {
+		for (const { part, socket } of list) {
+			part.removeFromParent();
+			disposeGeometries(part);
+			showCover(socket, true);
+		}
 	}
 
 	function unequip(kind) {
 		const entry = mounted[kind];
 		if (!entry) return;
-		for (const socket of socketsOf(entry.hardpointId)) unmountPart(socket).forEach(disposeGeometries);
+		removeRecords(records[kind] ?? []);
+		delete records[kind];
 		delete mounted[kind];
 	}
 
@@ -86,13 +138,17 @@ export function createLoadout(fuselage, materials) {
 		const onWings = Object.entries(mounted).filter(([, entry]) => entry.hardpointId === 'wing');
 		for (const [kind] of onWings) unequip(kind);
 
-		for (const side of ['L', 'R']) fuselage.userData.unmountPart(`socket_wing_${side}`).forEach(disposeGeometries);
+		removeRecords(wingRecords);
 		const variant = wingVariants[variantId];
-		wings = ['L', 'R'].map((side) => {
-			const wing = variant.build({ ...variant.defaults, ...params }, materials);
-			fuselage.userData.mountPart(`socket_wing_${side}`, wing);
-			return wing;
+		wingRecords = ['L', 'R'].map((side) => {
+			const part = variant.build({ ...variant.defaults, ...params }, materials);
+			const name = `socket_wing_${side}`;
+			fuselage.userData.mountPart(name, part);
+			const socket = fuselage.userData.sockets[name];
+			const piece = makePiece({ kind: 'wing', variantId, hardpointId: 'wingRoot', side, socket, part });
+			return { part, socket, piece };
 		});
+		wings = wingRecords.map((record) => record.part);
 		setWingsOpen(wingsOpen);
 
 		for (const [kind, { variantId: partId, params: partParams }] of onWings) {
@@ -105,7 +161,58 @@ export function createLoadout(fuselage, materials) {
 		for (const wing of wings) wing.userData.setOpen?.(t);
 	}
 
-	return { equip, unequip, equipWings, setWingsOpen, mounted };
+	/**
+	 * Pieces in assembly order: wings (L, R), then thrusters, then weapons; sockets in hardpoint order within a kind.
+	 */
+	function pieces() {
+		const lists = { wing: wingRecords, thruster: records.thruster ?? [], weapon: records.weapon ?? [] };
+		return KIND_ORDER.flatMap((kind) => lists[kind].map((record) => record.piece).filter(Boolean));
+	}
+
+	/**
+	 * Snaps the piece back on its socket in its mounted pose.
+	 */
+	function mountPiece(piece) {
+		piece.socket.add(piece.part);
+		piece.part.position.copy(piece.local.position);
+		piece.part.quaternion.copy(piece.local.quaternion);
+		piece.part.scale.copy(piece.local.scale);
+		showCover(piece.socket, false);
+		piece.mounted = true;
+	}
+
+	/**
+	 * Reparents the piece to `parent` keeping its world transform; the socket cover shows again if nothing else is on it.
+	 */
+	function detachPiece(piece, parent) {
+		parent.attach(piece.part);
+		piece.mounted = false;
+		if (!pieces().some((other) => other !== piece && other.socket === piece.socket && other.mounted)) {
+			showCover(piece.socket, true);
+		}
+	}
+
+	/**
+	 * Removes every part (wings included), mounted or detached, and forgets the pieces.
+	 */
+	function disposeAll() {
+		for (const kind of Object.keys(mounted)) unequip(kind);
+		removeRecords(wingRecords);
+		wingRecords = [];
+		wings = [];
+	}
+
+	return {
+		equip,
+		unequip,
+		equipWings,
+		setWingsOpen,
+		mounted,
+		pieces,
+		mountPiece,
+		detachPiece,
+		disposeAll,
+	};
 }
 
 function disposeGeometries(object) {

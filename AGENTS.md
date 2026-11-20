@@ -99,7 +99,9 @@ src/
   app/assembly.js        state machine for the pick/lift/move/lower/release sequence
   app/cameras.js         7 cameras + switching
   app/menu.js            Tweakpane UI, top-right (wings type/params/open + weapon and thruster type/position; generate, pause, camera… to add)
-  app/loadout.js         wings + which part kind sits on which hardpoint (incl. the wing one); equip/unequip, disposal
+  app/loadout.js         wings + which part kind sits on which hardpoint (incl. the wing one); equip/unequip, disposal; pieces() in assembly order, mountPiece/detachPiece
+  app/layout.js          floor layout: each piece at its mounted world pose translated (wings beside the platform on pads/jig,
+                         weapons rack front-right, thrusters rack front-left), stands, grip point for the magnet
   viewer/main.js         piezas.html entry (shares src/parts/*)
   geometry/
     uv.js                world-scale box-projected UVs for tiling textures on boxes

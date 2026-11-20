@@ -5,13 +5,23 @@ import { ALL_HARDPOINTS, PART_KINDS, hardpointsFor } from './loadout.js';
 /**
  * Tweakpane menu, fixed to the top-right corner. Edits `config` in place and calls back when something changes:
  * `onWingChange()` (type or geometric params), `onWingToggle()` (open/close button), `onWeaponChange()` and
- * `onThrusterChange()`. The view folder edits `config.view`: `onCameraChange(index)` (options from `cameraOptions`,
+ * `onThrusterChange()`. The assembly folder edits `config.assembly.layout` ('ship' | 'floor') and calls
+ * `onLayoutChange(value)`. The view folder edits `config.view`: `onCameraChange(index)` (options from `cameraOptions`,
  * `{ label: index }`) and `onShadowsChange(level)`. Call `refresh()` on the returned pane after changing
  * `config.view.camera` from the keyboard.
  */
 export function createMenu(
 	config,
-	{ onWingChange, onWingToggle, onWeaponChange, onThrusterChange, cameraOptions, onCameraChange, onShadowsChange }
+	{
+		onWingChange,
+		onWingToggle,
+		onLayoutChange,
+		onWeaponChange,
+		onThrusterChange,
+		cameraOptions,
+		onCameraChange,
+		onShadowsChange,
+	}
 ) {
 	const pane = new Pane({ title: 'Astillero orbital' });
 
@@ -22,6 +32,14 @@ export function createMenu(
 	view.addBinding(config.view, 'shadows', {
 		options: { Off: 'off', Low: 'low', High: 'high' },
 	}).on('change', (event) => onShadowsChange(event.value));
+
+	const assembly = pane.addFolder({ title: 'Assembly' });
+	assembly
+		.addBinding(config.assembly, 'layout', {
+			label: 'pieces',
+			options: { 'On the ship': 'ship', 'On the floor': 'floor' },
+		})
+		.on('change', (event) => onLayoutChange(event.value));
 
 	const wings = pane.addFolder({ title: 'Wings' });
 	wings.addBinding(config.wing, 'variant', { label: 'type', options: variantOptions('wing') }).on('change', () => {
