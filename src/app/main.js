@@ -37,7 +37,7 @@ const gear = { t: 1, target: 1, duration: 2 };
 const wingFold = { t: 0, target: 0, duration: 1.2 };
 
 // Arrow keys drive the crane in the horizontal plane: left/right along x (left = +x, as seen from the hangar camera),
-// up/down along z (up = +z, towards the opening)
+// up/down along z (up = +z, towards the opening). No manual hoist: only the assembly raises and lowers the magnet
 const CRANE_KEYS = {
 	ArrowLeft: ['x', 1],
 	ArrowRight: ['x', -1],

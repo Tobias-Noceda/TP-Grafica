@@ -127,7 +127,7 @@ src/
 ```
 
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (view, wings, weapons, thrusters),
-`app/cameras.js` (7 cameras), `app/shadows.js` (spot + contact shadow), `app/crane.js` (manual drive, fixed cable),
+`app/cameras.js` (7 cameras), `app/shadows.js` (spot + contact shadow), `app/crane.js` (manual + automatic drive, hoist),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/` (rearEngine, quadBlock),
 `parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
@@ -299,12 +299,19 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
 ### 5.5 Scene graph and hierarchy
 
 - **Crane** (implemented, D-026, ≥3 dependency levels): `runway rails (fixed, under the girders at x = ±15) → bridge
-(moves along Z) → trolley (moves along X) → swing (pivot at the hoist drum, pendulum sway) → cable (fixed length
-for now) + magnet → attachPoint / cameraMount`. Underhung: it hangs below the girders; magnet face at y ≈ 5.9.
-  Arrow keys drive it (←/→ = ±x, ↑/↓ = ±z) through `crane.userData.setInput({ x, z })`; `update(dt)` ramps the speed
+(moves along Z) → trolley (moves along X) → hoist drum (rotates as cable pays out) → swing (pivot at the drum, pendulum sway) →
+cable (variable length, `HOIST` 1.5–10.9 m) + magnet → attachPoint / cameraMount`. Underhung: it hangs below the
+  girders; the magnet face reaches y = 0.2–9.6 (`CRANE_LIMITS.y`).
+  Arrow keys drive it horizontally only (←/→ = ±x, ↑/↓ = ±z) through `crane.userData.setInput({ x, z })`;
+  the hoist (1.2 m/s) is never driven manually, only by the assembly through `moveTo`; `update(dt)` ramps the speed
   (1.5 m/s², max 3.5 m/s trolley / 4 m/s bridge), brakes before the end stops (`CRANE_LIMITS`) and integrates a near-critically damped (anti-sway) pendulum per
   axis from the carriage acceleration. The tip is an **electromagnet**, not a claw: no claw joints to animate;
   `setMagnet(on)` lights its ring. Moving a parent must visibly carry its children.
+  Automatic drive (for the assembly): `setAuto(on)` (manual input ignored, critical anti-sway damping for the live
+  cable length), `moveTo({ x, z, y })` (y = magnet-face world height; position control with a √ braking profile at
+  0.45·a and a linear last 5 cm, so no overshoot), `arrived()`, `settled(tolDeg)`, `faceWorldPosition()`,
+  `cableLength()`. Long moves take ~7–9 s at ×1 and the sway settles 1–4 s later, leaving ≤ 5 cm of offset at
+  0.2°.
 - **Pick-up / drop-off** with `Object3D.attach(child)`, which reparents while keeping the world transform:
     - grab: `crane.userData.attachPoint.attach(part)` (magnet face)
     - release: `socket.attach(part)`, then snap `part.position.set(0,0,0); part.quaternion.identity()`

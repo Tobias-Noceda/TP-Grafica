@@ -295,7 +295,7 @@ layer 1, two blur passes, transparent plane on the deck), which works on any mat
 lights over the ship were dimmed (180 → 60) to make room for the spot. Quality Low = 1024 spot / 256 contact, High =
 2048 / 512, Off disables both.
 
-### D-026 Underhung crane with a magnet tip, fixed cable and pendulum sway
+### D-026 Underhung crane with a magnet tip, hoist and pendulum sway
 
 The ceiling girders at x = ±15 (`HANGAR.craneRailX`) run along z and the ceiling beams sit right on top of them, so the crane is
 **underhung**: the bridge spans x, rolls along z under the girders, and the trolley runs along x under the bridge (the
@@ -303,7 +303,10 @@ inverse of the axes first sketched in AGENTS §5.5). The girders were moved out 
 reaches x = ±13.5: the platform covers |x| ≤ 5, which leaves a floor strip about 8 m wide on each side for the parts
 waiting to be mounted. The tip is an **electromagnet** instead of a claw: picking a part
 up is `attachPoint.attach(part)` and dropping it is `socket.attach(part)`, with no claw joints to pose around each part
-shape. The cable has a fixed length (5.2 m, magnet face at y ≈ 5.9, above the ship) until the assembly needs hoisting.
+shape. The cable started with a fixed length; the brief (p. 4) asks for a holder positioned in three dimensions that lowers
+to the pieces, so it is now a hoist: the cable length varies between 1.5 and 10.9 m (magnet face at y = 9.6 down to
+0.2) and the drum turns with it (a visible joint). The pendulum length follows the cable. In automatic mode the
+damping is critical for the current length (2·√(g/L)): heavier damping would be overdamped and creep in slower.
 For a realistic ride from the magnet camera (7), the carriages accelerate and brake at 1.5 m/s² up to 3.5 m/s (trolley) / 4 m/s (bridge)
 (braking cap v ≤ √(2·a·d) so they ease into the end stops) and the magnet hangs from a pendulum per axis driven by the
 carriage acceleration (θ'' = -(g/L)·sin θ - (a/L)·cos θ - c·θ'), substepped at 120 Hz. The damping c = 2.2 /s is close

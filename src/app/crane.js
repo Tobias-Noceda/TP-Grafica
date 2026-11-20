@@ -9,18 +9,29 @@ const RAIL_BOTTOM = HANGAR.height - 1.8;
 const BRIDGE_Y = RAIL_BOTTOM - 0.6; // centre of the bridge girders
 const TROLLEY_Y = BRIDGE_Y - 0.55; // centre of the trolley frame
 const PIVOT_Y = TROLLEY_Y - 0.75; // bottom of the hoist drum, where the cable leaves it
-// Fixed cable length (no hoisting yet). The magnet face ends ~6 m above the floor, clear of the ship.
-const CABLE = 5.2;
 const MAGNET_DROP = 1.2; // cable end → magnet face
-const SWING_LENGTH = CABLE + 1; // pendulum length, cable end to the magnet's centre of mass
+const DRUM_RADIUS = 0.3;
 const GRAVITY = 9.81;
 const SWING_DAMPING = 2.2; // 1/s, close to critical: like an anti-sway hoist, the swing settles in about one period
 const MAX_SUBSTEP = 1 / 120;
+
+/** Hoist: cable length range (m) and speed. The magnet face can come down to 0.2 m above the floor. */
+export const HOIST = {
+	min: 1.5,
+	max: PIVOT_Y - MAGNET_DROP - 0.2,
+	initial: 5.2,
+	maxSpeed: 1.2,
+	accel: 1,
+};
+const faceYAt = (length) => PIVOT_Y - length - MAGNET_DROP;
+const lengthForFaceY = (y) => PIVOT_Y - MAGNET_DROP - y;
 
 /** Travel limits (world metres): trolley between the end trucks, bridge clear of the back wall and the front header. */
 export const CRANE_LIMITS = {
 	x: [-RAIL_X + 1.5, RAIL_X - 1.5],
 	z: [-HANGAR.depth / 2 + 2.5, HANGAR.depth / 2 - 4],
+	// Magnet-face world heights: [lowest, highest]
+	y: [faceYAt(HOIST.max), faceYAt(HOIST.min)],
 };
 
 /**
@@ -29,17 +40,25 @@ export const CRANE_LIMITS = {
  *   crane (fixed runway rails)
  *    └─ bridge   moves along z on the rails
  *        └─ trolley   moves along x on the bridge
+ *            ├─ drum   hoist drum, rotates as the cable pays out (trolley.userData.drum)
  *            └─ swing   pivot at the hoist drum, rotates with the pendulum sway
- *                ├─ cable   fixed length
- *                └─ magnet   ├─ attachPoint (parts are `attach`ed here)
- *                            └─ cameraMount (crane camera)
+ *                ├─ cable   unit-height cylinder scaled to the cable length
+ *                └─ magnet   (at the cable end)
+ *                    ├─ attachPoint (parts are `attach`ed here)
+ *                    └─ cameraMount (crane camera)
  *
  * The tip is an electromagnet, so picking a part up is `attachPoint.attach(part)` and dropping it is
  * `socket.attach(part)`: no claw to animate.
  *
- * `userData`: `{ bridge, trolley, swing, magnet, attachPoint, cameraMount, limits, setInput({ x, z }), update(dt),
- * speed(), maxSpeed, isMoving(), setMagnet(on) }`. Inputs are -1, 0 or 1 per axis; `update` accelerates the carriages
- * towards them, brakes before the end stops and swings the magnet from the carriages' acceleration.
+ * `userData` API:
+ * - `bridge, trolley, swing, magnet, attachPoint, cameraMount, limits` (`limits.y` = magnet-face heights [low, high]).
+ * - Manual: `setInput({ x, z })`, each -1, 0 or 1; horizontal only (the hoist is driven by `moveTo` alone). Ignored
+ *   while auto is on.
+ * - Automatic: `setAuto(on)` (clears inputs, raises anti-sway damping), `moveTo({ x, z, y })` (any subset; x/z are
+ *   trolley/bridge world positions, y the magnet-FACE world height), `arrived()`, `settled(tolDeg)`.
+ * - Queries: `faceWorldPosition(target)`, `cableLength()`, `speed()`, `maxSpeed`, `isMoving()`, `setMagnet(on)`.
+ * - `update(dt)`: accelerates each carriage (x, z, hoist) towards its input or target, brakes before the end stops and
+ *   swings the magnet from the carriages' acceleration.
  */
 export function buildCrane(materials) {
 	const crane = new THREE.Group();
@@ -58,24 +77,50 @@ export function buildCrane(materials) {
 	swing.position.y = PIVOT_Y;
 	trolley.add(swing);
 
-	const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, CABLE, 8), materials.chrome);
-	cable.position.y = -CABLE / 2;
+	const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 8), materials.chrome);
 	swing.add(cable);
 
 	const ringMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff3b1c, emissiveIntensity: 0 });
 	const magnet = buildMagnet(materials, ringMaterial);
-	magnet.position.y = -CABLE;
 	swing.add(magnet);
 
 	// Parked over the back half of the hangar, clear of the ship
 	bridge.position.z = -8;
+	const drum = trolley.userData.drum;
+	let cableLength = HOIST.initial;
+	const applyCable = (length) => {
+		drum.rotation.x += (length - cableLength) / DRUM_RADIUS;
+		cableLength = length;
+		cable.scale.y = length;
+		cable.position.y = -length / 2;
+		magnet.position.y = -length;
+	};
+	applyCable(HOIST.initial);
 	const axes = {
-		x: carriage(trolley, 'x', CRANE_LIMITS.x, 3.5, 1.5),
-		z: carriage(bridge, 'z', CRANE_LIMITS.z, 4, 1.5),
+		x: carriage(
+			() => trolley.position.x,
+			(v) => (trolley.position.x = v),
+			CRANE_LIMITS.x,
+			3.5,
+			1.5
+		),
+		z: carriage(
+			() => bridge.position.z,
+			(v) => (bridge.position.z = v),
+			CRANE_LIMITS.z,
+			4,
+			1.5
+		),
+		// Hoist state is the cable length, so +input (raise) means a negative length change (see `hoistInput`)
+		y: carriage(() => cableLength, applyCable, [HOIST.min, HOIST.max], HOIST.maxSpeed, HOIST.accel),
 	};
 	// Pendulum angle per axis: positive means the magnet is displaced towards +x / +z
 	const sway = { x: { angle: 0, rate: 0 }, z: { angle: 0, rate: 0 } };
-	const input = { x: 0, z: 0 };
+	const input = { x: 0, z: 0, y: 0 };
+	let auto = false;
+	const clearTargets = () => {
+		for (const key in axes) axes[key].target = null;
+	};
 
 	crane.userData = {
 		bridge,
@@ -86,10 +131,38 @@ export function buildCrane(materials) {
 		cameraMount: magnet.userData.cameraMount,
 		limits: CRANE_LIMITS,
 		maxSpeed: Math.max(axes.x.maxSpeed, axes.z.maxSpeed),
-		setInput({ x = 0, z = 0 }) {
+		// Manual driving is horizontal only: the hoist moves only in the automatic assembly
+		setInput({ x = 0, z = 0 } = {}) {
+			if (auto) return;
 			input.x = Math.sign(x);
 			input.z = Math.sign(z);
+			// Manual input takes over the axes it touches
+			if (input.x) axes.x.target = null;
+			if (input.z) axes.z.target = null;
 		},
+		setAuto(on) {
+			auto = !!on;
+			if (auto) {
+				input.x = input.z = input.y = 0;
+			} else {
+				clearTargets();
+			}
+		},
+		moveTo({ x, z, y } = {}) {
+			if (x !== undefined) axes.x.setTarget(x);
+			if (z !== undefined) axes.z.setTarget(z);
+			if (y !== undefined) axes.y.setTarget(lengthForFaceY(y));
+		},
+		arrived: () => Object.values(axes).every((axis) => axis.target === null || axis.arrived),
+		settled(tolDeg = 0.2) {
+			const tol = THREE.MathUtils.degToRad(tolDeg);
+			return [sway.x, sway.z].every((s) => Math.abs(s.angle) < tol && Math.abs(s.rate) < tol);
+		},
+		faceWorldPosition(target = new THREE.Vector3()) {
+			crane.updateMatrixWorld(true);
+			return magnet.userData.attachPoint.getWorldPosition(target);
+		},
+		cableLength: () => cableLength,
 		update(dt) {
 			// A long frame (tab in background) would blow the integration up
 			dt = Math.min(dt, 0.1);
@@ -99,14 +172,22 @@ export function buildCrane(materials) {
 			for (let i = 0; i < steps; i++) {
 				for (const key of ['x', 'z']) {
 					const acceleration = axes[key].step(input[key], h);
-					swingStep(sway[key], acceleration, h);
+					// Automatic drive: critical damping for the current cable length (anti-sway), the fastest
+					// settle without swinging back. More damping would be overdamped and creep in slowly.
+					const length = cableLength + 1;
+					const damping = auto ? 2 * Math.sqrt(GRAVITY / length) : SWING_DAMPING;
+					swingStep(sway[key], acceleration, length, damping, h);
 				}
+				axes.y.step(-input.y, h);
 			}
 			// Rotating about z by +a moves the hanging magnet towards +x; about x by -a moves it towards +z
 			swing.rotation.set(-sway.z.angle, 0, sway.x.angle);
 		},
 		speed: () => Math.hypot(axes.x.velocity, axes.z.velocity),
-		isMoving: () => crane.userData.speed() > 1e-3 || Math.abs(sway.x.rate) + Math.abs(sway.z.rate) > 1e-3,
+		isMoving: () =>
+			crane.userData.speed() > 1e-3 ||
+			Math.abs(axes.y.velocity) > 1e-3 ||
+			Math.abs(sway.x.rate) + Math.abs(sway.z.rate) > 1e-3,
 		setMagnet(on) {
 			ringMaterial.emissiveIntensity = on ? 4 : 0;
 		},
@@ -115,18 +196,43 @@ export function buildCrane(materials) {
 }
 
 /**
- * One crane axis: velocity eases towards `input · maxSpeed` at a limited acceleration, and is capped so the carriage
- * can always stop before the end of its travel (v ≤ √(2·a·d)). `step` returns the acceleration it applied.
+ * One axis over a value reached through `get` / `set` (a carriage position or the cable length). Velocity eases
+ * towards the desired one at a limited acceleration and is capped so the axis can always stop before the end of its
+ * travel (v ≤ √(2·a·d)). Without a target the desired velocity is `input · maxSpeed`. With a target it is
+ * sign(d)·min(maxSpeed, √(2·a_b·|d|)) using a reduced braking acceleration a_b = 0.45·a, and linear (v = k·d, matched
+ * to the sqrt profile at |d| = ZONE) inside the last ZONE metres, so it glides in without overshoot or chatter; it
+ * snaps to the target when |d| < 1 mm and |v| is small. `step` returns the acceleration it applied.
  */
-function carriage(object, axis, [min, max], maxSpeed, accel) {
+const TARGET_ZONE = 0.05;
+function carriage(get, set, [min, max], maxSpeed, accel) {
+	const brake = 0.45 * accel;
+	const gain = Math.sqrt((2 * brake) / TARGET_ZONE);
 	const state = {
-		position: object.position[axis],
+		position: get(),
 		velocity: 0,
 		maxSpeed,
+		target: null,
+		arrived: false,
+		setTarget(value) {
+			state.target = THREE.MathUtils.clamp(value, min, max);
+			state.arrived = false;
+		},
 		step(input, dt) {
 			const brakeUp = Math.sqrt(2 * accel * Math.max(max - state.position, 0));
 			const brakeDown = -Math.sqrt(2 * accel * Math.max(state.position - min, 0));
-			const desired = THREE.MathUtils.clamp(input * maxSpeed, brakeDown, brakeUp);
+			let wanted = input * maxSpeed;
+			if (state.target !== null) {
+				if (state.arrived) {
+					wanted = 0;
+				} else {
+					const d = state.target - state.position;
+					const mag = Math.abs(d);
+					wanted =
+						Math.sign(d) *
+						(mag < TARGET_ZONE ? gain * mag : Math.min(maxSpeed, Math.sqrt(2 * brake * mag)));
+				}
+			}
+			const desired = THREE.MathUtils.clamp(wanted, brakeDown, brakeUp);
 			const before = state.velocity;
 			const change = THREE.MathUtils.clamp(desired - before, -accel * dt, accel * dt);
 			state.velocity += change;
@@ -135,7 +241,17 @@ function carriage(object, axis, [min, max], maxSpeed, accel) {
 				state.position = THREE.MathUtils.clamp(state.position, min, max);
 				state.velocity = 0;
 			}
-			object.position[axis] = state.position;
+			if (
+				state.target !== null &&
+				!state.arrived &&
+				Math.abs(state.target - state.position) < 1e-3 &&
+				Math.abs(state.velocity) < 0.02
+			) {
+				state.position = state.target;
+				state.velocity = 0;
+				state.arrived = true;
+			}
+			set(state.position);
 			return (state.velocity - before) / dt;
 		},
 	};
@@ -146,11 +262,11 @@ function carriage(object, axis, [min, max], maxSpeed, accel) {
  * Pendulum hanging from a carriage with acceleration `a`: θ'' = -(g/L)·sin θ - (a/L)·cos θ - c·θ'. Semi-implicit Euler.
  * Accelerating makes the magnet lag behind, stopping makes it swing past, and the swing then dies out slowly.
  */
-function swingStep(state, acceleration, dt) {
+function swingStep(state, acceleration, length, damping, dt) {
 	const angular =
-		-(GRAVITY / SWING_LENGTH) * Math.sin(state.angle) -
-		(acceleration / SWING_LENGTH) * Math.cos(state.angle) -
-		SWING_DAMPING * state.rate;
+		-(GRAVITY / length) * Math.sin(state.angle) -
+		(acceleration / length) * Math.cos(state.angle) -
+		damping * state.rate;
 	state.rate += angular * dt;
 	state.angle += state.rate * dt;
 }
@@ -224,9 +340,17 @@ function buildTrolley(materials) {
 
 	// Hoist: drum (axis x) between two side plates, motor and gearbox beside it
 	const drumY = TROLLEY_Y - 0.45;
-	trolley.add(
-		mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.9, 20).rotateZ(Math.PI / 2), materials.gunMetal, 0, drumY, 0)
+	const drum = mesh(
+		new THREE.CylinderGeometry(DRUM_RADIUS, DRUM_RADIUS, 0.9, 20).rotateZ(Math.PI / 2),
+		materials.gunMetal,
+		0,
+		drumY,
+		0
 	);
+	// Marker stripe so the rotation is visible
+	drum.add(mesh(new THREE.BoxGeometry(0.92, 0.03, 0.1), materials.trim, 0, DRUM_RADIUS, 0));
+	trolley.add(drum);
+	trolley.userData.drum = drum;
 	const plate = new THREE.BoxGeometry(0.06, 0.8, 0.8);
 	for (const x of [-0.5, 0.5]) trolley.add(mesh(plate, materials.darkMetal, x, drumY + 0.05, 0));
 	trolley.add(mesh(new THREE.BoxGeometry(0.4, 0.4, 0.5), materials.darkMetal, 0.75, drumY + 0.05, 0));
