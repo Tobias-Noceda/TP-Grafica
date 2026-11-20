@@ -419,7 +419,7 @@ function createMenu() {
 		}
 		// Weapons that spin on each shot (minigun): one press turns the barrel cluster by one barrel
 		if (piece.object.userData.fire) {
-			folder.addButton({ title: 'Fire (one barrel step)' }).on('click', () => piece.object.userData.fire?.());
+			folder.addButton({ title: 'Fire' }).on('click', () => piece.object.userData.fire?.());
 		}
 		if (piece.deploy !== undefined) {
 			folder.addBinding(piece, 'deploy', { label: 'deploy', min: 0, max: 1 }).on('change', () => {

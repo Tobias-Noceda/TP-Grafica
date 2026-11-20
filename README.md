@@ -29,13 +29,14 @@ position. In preview mode the ship rebuilds live.
 | Generate                   | Builds the chosen parts, lays them on the floor around the platform and starts the crane sequence. |
 | Pause / Continue (`SPACE`) | Freezes or resumes the assembly (cameras keep working).                                            |
 | Complete                   | Mounts every remaining part instantly.                                                             |
-| Reset                      | Cancels the sequence and removes every part, ready for a new configuration.                        |
+| Reset                      | Cancels the sequence (or leaves flight mode) and goes back to the start: ship rebuilt, parts menu. |
 | speed                      | ×1, ×2 or ×4, changeable while it runs.                                                            |
 | pieces                     | Preview only: show the parts on the ship or laid out on the floor.                                 |
 
 The crane mounts the wings first, then the thrusters, then the weapons. For each part it moves over it, lowers the
 magnet, grabs it, lifts it above the ship, carries it to the socket and slides it in. While it runs, only the View and
-Assembly folders are shown.
+Assembly folders are shown. When it finishes, the ship enters **flight mode**: it is locked, the menu shows only View
+and Reset, and `P` fires the guns (a muzzle spark; the minigun turns by one barrel).
 
 **Keys**
 
@@ -43,8 +44,9 @@ Assembly folders are shown.
 | ------------- | -------------------------------------------------------------------------------------- |
 | `1`–`7`, `C`  | Select / cycle cameras                                                                 |
 | `SPACE`       | Pause / continue the assembly                                                          |
+| `P`           | Fire the guns, hold for automatic fire (flight mode only)                              |
 | `T`           | Extend / retract the landing gear                                                      |
-| `O`           | Open / close the X-wing S-foils (preview only)                                         |
+| `O`           | Open / close the X-wing S-foils (preview and flight mode)                              |
 | Arrows        | Drive the crane horizontally when no assembly is running (the hoist is automatic only) |
 | `WASD`, Shift | Walk / run in the first-person camera (click to lock the mouse, Esc to release)        |
 

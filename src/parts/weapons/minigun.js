@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 import { bezierChain2, roundedRectangle } from '../../geometry/curves.js';
 import { buildRevolutionGeometry, buildVariableSweepGeometry } from '../../geometry/sweep.js';
-import { box, buildPylon, place, supportDistance } from './common.js';
+import { addMuzzleFlash, box, buildPylon, place, supportDistance } from './common.js';
 
 const defaults = { barrelCount: 6, barrelLength: 1.1 };
 
@@ -36,8 +36,9 @@ const STEP_DURATION = 0.12; // seconds to turn the cluster by one barrel
  *
  * `userData`:
  * - `barrelCount`, `stepAngle` (2π / barrelCount).
- * - `fire()`: queues one step, i.e. the cluster turns by exactly one barrel. Steps run one after the other.
- * - `update(dt)`: advances the queued steps; call it every frame.
+ * - `fire()`: shows a muzzle spark and queues one step, i.e. the cluster turns by exactly one barrel. Steps run one
+ *   after the other.
+ * - `update(dt)`: fades the spark and advances the queued steps; call it every frame.
  * - `muzzle`: `Object3D` at the muzzle of the firing (top) barrel. It is not in the rotor, and after every step a
  *   barrel is back in the top slot, so it is the spot for a muzzle flash.
  */
@@ -91,7 +92,21 @@ function buildMinigun(params, materials, { outward = new THREE.Vector3(1, 0, 0),
 	muzzle.name = 'muzzle';
 	body.add(place(muzzle, 0, clusterRadius, rotorZ + barrelLength));
 
-	gun.userData = { barrelCount, muzzle, ...spinner(rotor, barrelCount) };
+	const spin = spinner(rotor, barrelCount);
+	const flash = addMuzzleFlash(muzzle);
+	gun.userData = {
+		barrelCount,
+		muzzle,
+		stepAngle: spin.stepAngle,
+		fire() {
+			flash.fire();
+			spin.fire();
+		},
+		update(dt) {
+			flash.update(dt);
+			spin.update(dt);
+		},
+	};
 
 	return gun;
 }

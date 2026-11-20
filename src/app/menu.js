@@ -10,7 +10,7 @@ import { ALL_HARDPOINTS, PART_KINDS, hardpointsFor } from './loadout.js';
  * `{ label: index }`) and `onShadowsChange(level)`. The assembly folder also has Generate / Pause / Complete / Reset
  * buttons (`onGenerate`, `onTogglePause`, `onComplete`, `onReset`), a `config.assembly.speed` list and a status monitor.
  * Returns `{ pane, refresh(), setMode({ mode, paused }) }`: call `refresh()` after changing `config.view.camera` from
- * the keyboard, and `setMode` when the app mode ('preview' | 'assembling' | 'empty') or the pause state changes.
+ * the keyboard, and `setMode` when the app mode ('preview' | 'assembling' | 'flight') or the pause state changes.
  */
 export function createMenu(
 	config,
@@ -40,14 +40,24 @@ export function createMenu(
 	}).on('change', (event) => onShadowsChange(event.value));
 
 	const assembly = pane.addFolder({ title: 'Assembly' });
-	assembly.addButton({ title: 'Generate' }).on('click', () => onGenerate());
+	const generateButton = assembly.addButton({ title: 'Generate' });
+	generateButton.on('click', () => onGenerate());
 	const pauseButton = assembly.addButton({ title: 'Pause (SPACE)' });
 	pauseButton.on('click', () => onTogglePause());
 	const completeButton = assembly.addButton({ title: 'Complete' });
 	completeButton.on('click', () => onComplete());
 	assembly.addButton({ title: 'Reset' }).on('click', () => onReset());
-	assembly.addBinding(config.assembly, 'speed', { label: 'speed', options: { x1: 1, x2: 2, x4: 4 } });
-	assembly.addBinding(config.assembly, 'status', { label: 'status', readonly: true, interval: 200 });
+	const speedBinding = assembly.addBinding(config.assembly, 'speed', {
+		label: 'speed',
+		options: { x1: 1, x2: 2, x4: 4 },
+	});
+	const statusBinding = assembly.addBinding(config.assembly, 'status', {
+		label: 'status',
+		readonly: true,
+		interval: 200,
+	});
+	// Flight mode hint (the guns only fire there)
+	const flightHint = assembly.addBlade({ view: 'text', label: 'fire', parse: (v) => v, value: 'P', disabled: true });
 	const layoutBinding = assembly
 		.addBinding(config.assembly, 'layout', {
 			label: 'pieces',
@@ -100,9 +110,17 @@ export function createMenu(
 		refresh: () => pane.refresh(),
 		setMode({ mode, paused }) {
 			const assembling = mode === 'assembling';
-			// While the crane assembles, only the View and Assembly folders are shown: no ship building options
-			for (const folder of [wings, folders.weapon.folder, folders.thruster.folder]) folder.hidden = assembling;
+			const flight = mode === 'flight';
+			// While the crane assembles, only the View and Assembly folders are shown: no ship building options.
+			// In flight mode the ship is locked: View and the Reset button (back to the start) only
+			for (const folder of [wings, folders.weapon.folder, folders.thruster.folder])
+				folder.hidden = mode !== 'preview';
 			layoutBinding.hidden = mode !== 'preview';
+			for (const control of [generateButton, pauseButton, completeButton, speedBinding, statusBinding]) {
+				control.hidden = flight;
+			}
+			flightHint.hidden = !flight;
+			assembly.title = flight ? 'Flight' : 'Assembly';
 			pauseButton.disabled = completeButton.disabled = !assembling;
 			pauseButton.title = paused ? 'Continue (SPACE)' : 'Pause (SPACE)';
 		},

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 import { bezierChain2 } from '../../geometry/curves.js';
 import { buildRevolutionGeometry } from '../../geometry/sweep.js';
-import { box, buildPylon, place, supportDistance } from './common.js';
+import { addMuzzleFlash, box, buildPylon, place, supportDistance } from './common.js';
 
 const defaults = { barrelLength: 1.1, muzzleFlare: 1 };
 
@@ -29,7 +29,8 @@ const DEFAULT_CLEARANCE = 0.12;
 
 /**
  * Machine gun: pylon to the hull, boxy receiver with top rail, sights, cooling fins, cocking handle (outer side) and a
- * box magazine underneath. The barrel is a surface of revolution (see `barrelProfile`).
+ * box magazine underneath. The barrel is a surface of revolution (see `barrelProfile`). `userData.fire()` shows a spark
+ * at the `muzzle` (barrel tip), `userData.update(dt)` fades it.
  */
 function buildMachineGun(
 	params,
@@ -103,6 +104,12 @@ function buildMachineGun(
 	barrel.name = 'barrel';
 	barrel.rotation.x = Math.PI / 2;
 	body.add(place(barrel, 0, 0.02, RECEIVER.front));
+
+	// Firing: a spark at the barrel tip (`userData.fire()`, faded by `userData.update(dt)`)
+	const muzzle = new THREE.Object3D();
+	muzzle.name = 'muzzle';
+	body.add(place(muzzle, 0, 0.02, RECEIVER.front + barrelLength));
+	gun.userData = { muzzle, ...addMuzzleFlash(muzzle) };
 
 	return gun;
 }

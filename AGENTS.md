@@ -90,7 +90,7 @@ app.html                 main scene entry
 piezas.html              part viewer entry
 public/textures/         imported PBR textures (Poly Haven, CC0) — see CREDITS.md
 src/
-  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE pause, T, O, C, 1-7, arrows → crane); app modes, Generate/Complete/Reset, sim dt × speed
+  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE pause, P fire, T, O, C, 1-7, arrows → crane); app modes (preview / assembling / flight), Generate/Complete/Reset, sim dt × speed
   app/materials.js       texture loading + shared material library (hangar + ship materials)
   hangar/hangar.js       hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
   hangar/platform.js     central assembly platform (PLATFORM dimensions, mountPoint on the deck)
@@ -271,8 +271,10 @@ export const wingVariants = { xwing: xWingSFoils, plane: planeWing, tie: tieInte
   with params `barrelLength` and `muzzleFlare`, and a receiver, rail, sights, fins and magazine made of primitives. `minigun` (implemented, `hardpoints: ['wing', 'top']`,
   D-022): `barrelCount` 5–8 barrels (shared Bézier revolution) in a `rotor` group with clamp rings, a revolution motor
   housing, and an ammo feed chute swept along a curved path into the hull; params `barrelCount`, `barrelLength`.
-  `userData.fire()` queues a one-barrel turn (`2π / n`), `userData.update(dt)` runs it, `userData.muzzle` marks the
-  firing barrel's muzzle (for a future muzzle flash). Like thrusters, a weapon variant may declare `hardpoints`.
+  Both guns expose `userData.fire()` / `userData.update(dt)` and a `userData.muzzle` node: `fire()` shows a muzzle
+  spark (`addMuzzleFlash` in `weapons/common.js`, additive primitives, fades in 0.1 s), and on the minigun also queues
+  a one-barrel turn (`2π / n`); its `muzzle` stays at the firing (top) barrel. Fired with `P` in flight mode only (held: one shot per 0.15 s)
+  (D-029). Like thrusters, a weapon variant may declare `hardpoints`.
 - Fuselage (fixed, implemented): X-wing inspired, built **only from primitives**, with no curves or sweeps. The main
   pieces are `taperedBox`es, which are `BoxGeometry`s with their corners moved so every face stays planar with flat
   normals. Nose points to `+z`, up `+y`, pilot's left `+x`. `FUSELAGE` holds the key z stations and the belly
@@ -343,7 +345,7 @@ order (wings → thrusters → weapons):
 
 ```
 RAISE → MOVE_OVER_PART → SETTLE_PART → LOWER_TO_GRAB → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET → SETTLE_SOCKET →
-LOWER_TO_APPROACH → INSERT → SETTLE_INSERT → RELEASE → RETRACT → RETRACT_UP → (next piece | PARK_XZ → PARK_Y → DONE)
+LOWER_TO_APPROACH → INSERT → SETTLE_INSERT → RELEASE → RETRACT → (next piece | PARK_XZ → PARK_Y → DONE)
 ```
 
 - Each step issues `crane.userData.moveTo` targets and waits for `arrived()`. Settle steps wait for `settled()` with
@@ -351,21 +353,26 @@ LOWER_TO_APPROACH → INSERT → SETTLE_INSERT → RELEASE → RETRACT → RETRA
 - **Live targets**: the final grip point `G = socket.matrixWorld · local · gripPoint` and the approach point
   `A = G + outward · 0.8 m` (wings) / 0.5 m are recomputed every frame. Toggling the gear mid-sequence is followed.
   Outward is the socket's `outward`, with x negated on `R` sockets, then brought to world space.
+- **Retract**: after the release the magnet rises straight up in one continuous move to the safe height (at least
+  `RETRACT_LIFT` 0.6 m + `BLEND_MARGIN` 0.3 m above the release point). Once it is `RETRACT_LIFT` above the release
+  and within `BLEND_MARGIN` of the safe height, the next horizontal move starts while the hoist finishes, with the
+  same y target, so the rise blends into the travel without stopping.
 - **Approach along the outward**: wings, nose guns and rear thrusters are lowered beside the hull and slid in
   horizontally. Top and wing-top parts come straight down.
 - **Safe height**: above the fuselage (with mounted parts) and everything still on the floor, plus the carried
   part's hang below the magnet, plus 0.5 m, clamped to the hoist range.
-- **Precision placement**: from `LOWER_TO_APPROACH` to `RETRACT`, `setPrecision(true)` (35 % speed and acceleration)
+- **Precision placement**: from `LOWER_TO_APPROACH` to `RELEASE`, `setPrecision(true)` (35 % speed and acceleration)
   and `setSwingLock(true)` (sway steadied out) keep the part on a straight line into its socket. The face targets are
   shifted by the grip offset measured at grab time. Release then `loadout.mountPiece` snaps by ≤ 0.1 mm.
 - **Time** (`main.js`): while the phase is `'running'`, `crane.update` and `assembly.update` get `dt × speed` (×1/×2/×4,
   live), or 0 when paused. While `'resetting'` they get the real dt. Cameras, gear and rendering always use the real dt.
-- **App modes** (`main.js`): `'preview'` (configuration rebuilds the ship live; menu `pieces` list shows the floor
-  layout), `'assembling'`, and `'empty'` (after Reset: nothing built until Generate).
+- **App modes** (`main.js`, D-029): `'preview'` (configuration rebuilds the ship live; menu `pieces` list shows the
+  floor layout) → Generate → `'assembling'` → when done → `'flight'` (ship locked; menu shows View and Reset only;
+  `P` fires every gun, `T` gear and `O` S-foils still work) → Reset → `'preview'`.
     - **Generate** rebuilds the pieces from the config, closes the wings, lays them on the floor and starts.
     - **Complete** mounts every remaining piece and parks the crane.
-    - **Reset** cancels, raises the magnet back to its park height (the crane has no manual hoist) and disposes every
-      piece and stand.
+    - **Reset** (from assembling or flight) cancels, raises the magnet back to its park height (the crane has no
+      manual hoist), disposes every piece and stand and rebuilds the ship from the config on the platform (preview).
     - While assembling, the Wings / Weapons / Thrusters folders are hidden and `O` is ignored.
 - A full run takes about 4.5–5.5 min at ×1 (≈ 50 s per piece), about 1.2 min at ×4.
 

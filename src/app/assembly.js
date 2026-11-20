@@ -10,12 +10,14 @@ const SETTLE_TIMEOUT = 6; // s
 const INSERT_SETTLE_TOL = 0.3;
 const INSERT_SETTLE_TIMEOUT = 2;
 const PARK_XZ = { x: 0, z: -8 };
+const RETRACT_LIFT = 0.6; // m the magnet rises straight up after a release, at least, before any horizontal move
+const BLEND_MARGIN = 0.3; // m below the safe height where the next horizontal move may start (hoist still rising)
 
 /**
  * Drives the crane through the assembly: for each piece, in loadout order,
  *
  *   RAISE → MOVE_OVER_PART → SETTLE → LOWER_TO_GRAB → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET → SETTLE →
- *   LOWER_TO_APPROACH → INSERT → SETTLE → RELEASE → RETRACT (→ next piece), then PARK.
+ *   LOWER_TO_APPROACH → INSERT → SETTLE → RELEASE → RETRACT (→ next piece, blended), then PARK.
  *
  * Every step issues `crane.userData.moveTo` targets and waits for `arrived()` (settle steps wait for the sway to
  * die, with a timeout). The caller feeds `update(dt)` (speed-scaled, pause-aware) while the phase is 'running' and
@@ -48,6 +50,8 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 	let timer = 0;
 	let safe = 0;
 	let grabY = 0;
+	let blendY = 0;
+	let keepSafe = 0; // safe height chosen by the last retract, kept by the next move
 	let warned = false;
 
 	const tmpBox = new THREE.Box3();
@@ -95,9 +99,9 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 		}
 	}
 
-	// From the final approach until the magnet has backed off: slower crane and a locked swing, so the part follows
+	// From the final approach until the release: slower crane and a locked swing, so the part follows
 	// a straight line into its socket instead of swinging into the hull
-	const PRECISE_STEPS = new Set(['LOWER_TO_APPROACH', 'INSERT', 'SETTLE_INSERT', 'RELEASE', 'RETRACT']);
+	const PRECISE_STEPS = new Set(['LOWER_TO_APPROACH', 'INSERT', 'SETTLE_INSERT', 'RELEASE']);
 	const go = (next) => {
 		api.setPrecision(PRECISE_STEPS.has(next));
 		api.setSwingLock(PRECISE_STEPS.has(next));
@@ -138,7 +142,9 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 				return moveStep(() => ({ y: safe }), 'MOVE_OVER_PART');
 			case 'MOVE_OVER_PART':
 				if (!entered) {
-					safe = safeY(null);
+					// Coming from a retract, keep its height: changing the y target would bend the blended rise
+					safe = Math.max(safeY(null), keepSafe);
+					keepSafe = 0;
 					piece.part.updateWorldMatrix(true, false);
 					piece.part.localToWorld(G.copy(piece.gripPoint));
 				}
@@ -188,11 +194,23 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 				}
 				return dwell(dt, RELEASE_DWELL, 'RETRACT');
 			case 'RETRACT':
-				liveTargets(piece);
-				return moveStep(() => ({ x: A.x, z: A.z, y: A.y }), 'RETRACT_UP', true);
-			case 'RETRACT_UP':
-				if (!entered) safe = safeY(null);
-				return moveStep(() => ({ y: safe }), 'NEXT');
+				// One continuous rise, straight up off the part (sliding back out along the outward would drag the
+				// magnet through parts that rise beside the grip point, like the TIE wing panel above its neck), to
+				// the safe height. Once the magnet is clear of everything (above the release point by RETRACT_LIFT
+				// and within BLEND_MARGIN of the safe height) the next move starts while the hoist finishes: it keeps
+				// the same y target, so the rise blends into the horizontal move without stopping
+				if (!entered) {
+					// A part mounted high (top hardpoints) leaves too little rise to blend into: aim a bit higher, so
+					// the hoist is still moving when the horizontal move starts (clamped to the hoist range)
+					const releaseY = faceY();
+					safe = Math.min(api.limits.y[1], Math.max(safeY(null), releaseY + RETRACT_LIFT + BLEND_MARGIN));
+					keepSafe = safe;
+					blendY = Math.min(safe, Math.max(releaseY + RETRACT_LIFT, safe - BLEND_MARGIN));
+					api.moveTo({ y: safe });
+					entered = true;
+				}
+				if (faceY() >= blendY - 1e-3 || api.arrived()) go('NEXT');
+				return;
 			case 'NEXT':
 				return nextPiece();
 			case 'PARK_RAISE':
@@ -224,7 +242,6 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 		SETTLE_INSERT: 'Inserting',
 		RELEASE: 'Releasing',
 		RETRACT: 'Retracting',
-		RETRACT_UP: 'Retracting',
 	};
 
 	return {
@@ -237,6 +254,7 @@ export function createAssembly({ crane, loadout, fuselage, layout, shadows, onDo
 			total = all.length;
 			current = null;
 			carried = false;
+			keepSafe = 0;
 			warned = false;
 			api.setAuto(true);
 			api.setMagnet(false);

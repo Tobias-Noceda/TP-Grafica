@@ -356,12 +356,20 @@ lower, release, retract. Design choices:
 - **Outward approach.** Parts are inserted along their socket's outward normal from an approach point 0.8 m
   (wings) / 0.5 m away. Side and rear parts are lowered beside the hull and slid in, never dropped through it. Top
   parts simply come down.
+- **Retract straight up, blended.** After a release the magnet rises vertically to the safe height in one move, and
+  only moves horizontally once it is clear: 0.6 m above the release point (`RETRACT_LIFT`) and within 0.3 m of the
+  safe height (`BLEND_MARGIN`). The next move then starts while the hoist is still rising, with the same y target,
+  so the rise curves into the travel instead of stopping. Earlier versions slid back out along the outward and
+  dragged the magnet through the TIE wing panel above its neck and through the nose guns, which a raycast check of
+  the magnet's path showed. A later version rose in two stops before travelling. The grip point is the highest point
+  of the part, so nothing of it is above the magnet. When a part is mounted high, the safe height is raised to leave
+  room for the blend.
 - **Live targets.** Targets come from the socket's current world matrix every frame, so the landing gear (T) can move
   the ship mid-sequence.
 - **Safe height.** It is computed from `Box3`s of the ship and of everything on the floor, plus the carried part's
   hang below the magnet.
 - **Precise insertion.** Measured in simulation, braking at the end of the slide swung pieces 4–10 cm past their
-  socket into the hull. From the final approach until the magnet has backed off, the crane now runs in precision mode
+  socket into the hull. From the final approach until the release, the crane now runs in precision mode
   with the swing lock on, and targets are corrected by the grip offset measured at grab time. Pieces then never pass
   their socket, and the release snap (`mountPiece`) is ≤ 0.1 mm.
 - **Re-issued targets.** Targets are re-issued every frame, so a carriage only clears its "arrived" flag when its
@@ -377,3 +385,22 @@ Simulated results:
 - No collisions with floor pieces or the ship in transit.
 - Complete, cancel, restart and a gear toggle mid-run all behave correctly.
 - About 50 s per piece at ×1.
+
+### D-029 Flight mode after the assembly, guns fire with P
+
+When the sequence finishes, the app enters **flight mode** instead of going back to the editable preview. Flight
+itself is not implemented yet. The assembled ship is locked: config edits are ignored, and the menu shows only View
+and Reset. `T` (gear) and `O` (S-foils) still work. **Reset** always returns to the start state, from a run or from
+flight: the ship is rebuilt from the config on the platform, with the parts menu live. There is no longer an "empty"
+mode.
+
+`P` fires every mounted gun, **only in flight mode**. Holding it down fires automatically, one shot every 0.15 s
+(the minigun turns one barrel in 0.12 s), until it is released.
+
+- **The spark.** It is a primitive detail, allowed for secondary elements: a stretched sphere core and three crossed
+  open cones along +z, on each gun's `muzzle` node.
+- **Its material.** One additive `MeshBasicMaterial` with an HDR colour (> 1), so the bloom pass makes it glow without
+  adding real lights. The material is transparent, so it never casts shadows.
+- **The fade.** It shrinks and hides in 0.1 s.
+- **The minigun** also turns its cluster by one barrel (the existing `spinner`).
+- **Shadows.** The shadow map is re-rendered for 0.3 s after a shot, while the rotor turns.

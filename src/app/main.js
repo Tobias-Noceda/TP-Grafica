@@ -21,7 +21,11 @@ import { createAssembly } from './assembly.js';
 let container, renderer, scene, cameras, renderPass, composer, bloomPass, space, fuselage, loadout, shadows, menu;
 let crane, layout, assembly;
 let generate, reset, complete, togglePause;
-// 'preview' (live edits), 'assembling' (sequence running or paused), 'empty' (after Reset: nothing built)
+let fireTimer = 0; // s left during which firing keeps re-rendering the shadows (minigun rotor turning)
+let triggerHeld = false; // P held down: automatic fire
+let nextShot = 0; // s until the next automatic shot
+const FIRE_INTERVAL = 0.15; // s between shots while P is held (the minigun turns one barrel in 0.12 s)
+// 'preview' (live edits), 'assembling' (sequence running or paused), 'flight' (assembled ship, locked; P fires)
 let mode = 'preview';
 let paused = false;
 const clock = new THREE.Clock();
@@ -177,13 +181,19 @@ function buildScene() {
 		setMode('assembling');
 		assembly.start(loadout.pieces());
 	};
+	// Back to the start: the ship rebuilt from the config on the platform, parts menu live
 	reset = () => {
-		if (assembly.phase !== 'idle') assembly.cancel();
+		if (assembly.phase === 'running') assembly.cancel();
 		loadout.disposeAll();
 		layout.clear();
 		paused = false;
-		shadows.markDirty();
-		setMode('empty');
+		config.assembly.layout = 'ship';
+		wingFold.t = wingFold.target = 0;
+		buildAll();
+		loadout.setWingsOpen(0);
+		applyLayout();
+		setMode('preview');
+		menu?.refresh();
 	};
 	complete = () => {
 		if (mode === 'assembling') assembly.complete();
@@ -204,7 +214,7 @@ function buildScene() {
 			config.assembly.layout = 'ship';
 			shipShadows();
 			shadows.markDirty();
-			setMode('preview');
+			setMode('flight');
 			menu?.refresh();
 		},
 	});
@@ -237,7 +247,7 @@ function syncMenu() {
 	menu?.setMode({ mode, paused });
 }
 
-/** Switches the app mode: 'preview' (live edits), 'assembling' (sequence running or paused) or 'empty' (after Reset). */
+/** Switches the app mode: 'preview' (live edits), 'assembling' (sequence running or paused) or 'flight' (assembled). */
 function setMode(next) {
 	mode = next;
 	syncMenu();
@@ -255,7 +265,7 @@ function onResize() {
 	bloomPass.resolution.set(width, height);
 }
 
-/** Keyboard: arrows drive the crane, SPACE pauses the assembly, T gear, O wings, C / 1-7 cameras. */
+/** Keyboard: arrows drive the crane, SPACE pauses the assembly, P fires (held: automatic; flight only), T gear, O wings, C / 1-7 cameras. */
 function onKeyDown(event) {
 	// Typing in a menu field must not switch cameras or toggle parts
 	if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
@@ -270,6 +280,12 @@ function onKeyDown(event) {
 	}
 	if (event.code === 'KeyT') toggle(gear);
 	if (event.code === 'KeyO') toggleWings();
+	if (event.code === 'KeyP' && !event.repeat) {
+		// First shot right away, then one every FIRE_INTERVAL until the key is released (see animate)
+		triggerHeld = true;
+		nextShot = FIRE_INTERVAL;
+		fireGuns();
+	}
 	if (event.code === 'KeyC') cameras.next();
 	const digit = /^Digit([1-7])$/.exec(event.code);
 	if (digit) cameras.set(Number(digit[1]) - 1);
@@ -277,6 +293,7 @@ function onKeyDown(event) {
 
 /** Releases a crane arrow key. */
 function onKeyUp(event) {
+	if (event.code === 'KeyP') triggerHeld = false;
 	if (craneKeys.delete(event.code)) updateCraneInput();
 }
 
@@ -292,7 +309,14 @@ function updateCraneInput() {
 
 // Wings stay closed while the pieces are on the floor
 function toggleWings() {
-	if (mode === 'preview' && config.assembly.layout !== 'floor') toggle(wingFold);
+	if ((mode === 'preview' && config.assembly.layout !== 'floor') || mode === 'flight') toggle(wingFold);
+}
+
+/** Fires every mounted gun (spark at the muzzle; the minigun also turns by one barrel). Only in flight mode. */
+function fireGuns() {
+	if (mode !== 'flight') return;
+	for (const piece of loadout.pieces()) if (piece.kind === 'weapon') piece.part.userData.fire?.();
+	fireTimer = 0.3;
 }
 
 /** Flips a toggle animation's target between 0 and 1. */
@@ -332,6 +356,19 @@ function animate() {
 		loadout.setWingsOpen(t);
 		shadows.markDirty();
 	});
+	// Automatic fire while P is held, then gun sparks and minigun rotor steps
+	if (triggerHeld && mode === 'flight') {
+		nextShot -= dt;
+		if (nextShot <= 0) {
+			nextShot += FIRE_INTERVAL;
+			fireGuns();
+		}
+	}
+	for (const piece of loadout.pieces()) if (piece.kind === 'weapon') piece.part.userData.update?.(dt);
+	if (fireTimer > 0) {
+		fireTimer -= dt;
+		shadows.markDirty();
+	}
 	shadows.render();
 	composer.render(dt);
 }
@@ -343,6 +380,7 @@ window.addEventListener('keydown', onKeyDown);
 window.addEventListener('keyup', onKeyUp);
 window.addEventListener('blur', () => {
 	craneKeys.clear();
+	triggerHeld = false;
 	updateCraneInput();
 });
 onResize();
