@@ -1,7 +1,7 @@
 {
   "name": "template",
   "version": "1.0.0",
-  "description": "",
+  "description": "Astillero orbital: procedural spaceship assembly in an orbital hangar (Three.js, TP Computación Gráfica ITBA)",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

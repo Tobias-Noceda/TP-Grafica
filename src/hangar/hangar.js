@@ -54,11 +54,13 @@ function box(width, height, depth, material, tileSize) {
 	return new THREE.Mesh(geometry, material);
 }
 
+/** Sets the mesh position and returns it, for one-line `group.add(place(...))`. */
 function place(mesh, x, y, z) {
 	mesh.position.set(x, y, z);
 	return mesh;
 }
 
+/** Floor slab (sticking out past the opening), ceiling slab, back wall and side walls. */
 function buildShell({ materials, tiles }) {
 	const shell = new THREE.Group();
 	shell.name = 'shell';
@@ -116,6 +118,7 @@ function buildSideWall({ materials, tiles }, side) {
 	return wall;
 }
 
+/** Wall column at a bay: base block, shaft, ceiling brace, lamp strip and a floor marker light. */
 function buildSideColumn(materials, tiles, wallX, inward, z) {
 	const column = new THREE.Group();
 	column.name = 'column';
@@ -142,6 +145,7 @@ function buildSideColumn(materials, tiles, wallX, inward, z) {
 	return column;
 }
 
+/** Catwalk balcony on a side wall: deck, railing with posts and an under-deck lamp. */
 function buildBalcony(materials, tiles, wallX, inward, z) {
 	const balcony = new THREE.Group();
 	balcony.name = 'balcony';
@@ -172,6 +176,7 @@ function buildBalcony(materials, tiles, wallX, inward, z) {
 	return balcony;
 }
 
+/** Cargo crate stack against a side wall. */
 function buildCrate(materials, tiles, x, z, inward) {
 	const crate = new THREE.Group();
 	crate.name = 'crate';
@@ -331,6 +336,7 @@ function buildFloorMarkings({ materials }) {
 	return markings;
 }
 
+/** Hemisphere fill plus the few real point lights (ceiling over the ship, side and back walls); lamps elsewhere are emissive meshes. */
 function buildLights() {
 	const lights = new THREE.Group();
 	lights.name = 'hangar-lights';

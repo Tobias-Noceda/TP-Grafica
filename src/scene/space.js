@@ -36,6 +36,10 @@ export function buildSpace() {
 	};
 }
 
+/**
+ * One star layer: `count` points spread uniformly on a radius-3000 sphere, with a fixed screen size (no size
+ * attenuation) and slightly varied colours.
+ */
 function buildStarfield(count, size, brightness) {
 	const positions = new Float32Array(count * 3);
 	const colors = new Float32Array(count * 3);
@@ -68,6 +72,7 @@ function buildStarfield(count, size, brightness) {
 	return stars;
 }
 
+/** Gas giant: sphere with the generated equirectangular texture and its own sun direction, plus the additive fresnel atmosphere shell. */
 function buildPlanet() {
 	const planet = new THREE.Group();
 	planet.name = 'planet';

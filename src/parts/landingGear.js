@@ -88,11 +88,13 @@ export function buildLandingGear(materials, { height, foldDirection = 1 }) {
 	return root;
 }
 
+/** Sets the mesh position and returns it. */
 function place(mesh, x, y, z) {
 	mesh.position.set(x, y, z);
 	return mesh;
 }
 
+/** Cylinder along its local y, used for struts, pins and wheels. */
 function cylinder(radius, length, material, segments = 16) {
 	return new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, segments), material);
 }

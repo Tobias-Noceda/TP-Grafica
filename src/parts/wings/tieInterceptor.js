@@ -233,6 +233,7 @@ function sectionAt(v, outline) {
 	return bezierChain2(points);
 }
 
+/** Vertex-by-vertex blend of two outlines with the same vertex count. */
 function lerpOutline(from, to, t) {
 	return from.map((point, i) => point.clone().lerp(to[i], t));
 }

@@ -220,15 +220,18 @@ export function buildCrane(materials) {
 	return crane;
 }
 
+const TARGET_ZONE = 0.05; // m: last stretch before a target, approached linearly
+
 /**
- * One axis over a value reached through `get` / `set` (a carriage position or the cable length). Velocity eases
+ * One axis over a value reached through `get` / `set` (trolley x, bridge z or the hoist cable length). Velocity eases
  * towards the desired one at a limited acceleration and is capped so the axis can always stop before the end of its
  * travel (v ≤ √(2·a·d)). Without a target the desired velocity is `input · maxSpeed`. With a target it is
  * sign(d)·min(maxSpeed, √(2·a_b·|d|)) using a reduced braking acceleration a_b = 0.45·a, and linear (v = k·d, matched
- * to the sqrt profile at |d| = ZONE) inside the last ZONE metres, so it glides in without overshoot or chatter; it
- * snaps to the target when |d| < 1 mm and |v| is small. `step` returns the acceleration it applied.
+ * to the sqrt profile at |d| = TARGET_ZONE) inside the last TARGET_ZONE metres, so it glides in without overshoot or
+ * chatter; it snaps to the target when |d| < 1 mm and |v| is small. `scale` (precision mode) multiplies the speed and
+ * the acceleration. `step(input, dt)` advances one substep and returns the acceleration it applied (the pendulum is
+ * driven by it).
  */
-const TARGET_ZONE = 0.05;
 function carriage(get, set, [min, max], maxSpeed, accel) {
 	const state = {
 		// Precision mode scales speed and acceleration down (see `setPrecision`)
@@ -302,6 +305,7 @@ function swingStep(state, acceleration, length, damping, dt) {
 	state.angle += state.rate * dt;
 }
 
+/** Mesh at (x, y, z) in its parent's frame. */
 function mesh(geometry, material, x = 0, y = 0, z = 0) {
 	const m = new THREE.Mesh(geometry, material);
 	m.position.set(x, y, z);

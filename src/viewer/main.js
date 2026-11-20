@@ -74,6 +74,7 @@ const pieces = [
 	},
 ];
 
+/** Renderer, scene, environment, orbit camera and post-processing for the part viewer. */
 function setupThreeJs() {
 	container = document.getElementById('container3D');
 
@@ -122,6 +123,7 @@ function setupThreeJs() {
 	onResize();
 }
 
+/** Starfield, grid and the gallery of pieces built from the variant registries, each with a CSS2D label. */
 function buildScene() {
 	materials = createMaterials(renderer);
 
@@ -176,12 +178,14 @@ function applyTechniqueView(piece) {
 	});
 }
 
+/** Whether any mesh under `object` is tagged with `userData.technique` (it then gets a "sweep only" toggle). */
 function hasTechnique(object) {
 	let found = false;
 	object.traverse((child) => (found ||= Boolean(child.isMesh && child.userData.technique)));
 	return found;
 }
 
+/** Applies a piece's pose sliders: `open` for wings that open, `deploy` for the landing gear. */
 function applyPose(piece) {
 	if (piece.open !== undefined) piece.object.userData.setOpen?.(piece.open);
 	if (piece.deploy !== undefined) piece.object.userData.setDeploy?.(piece.deploy);
@@ -239,6 +243,7 @@ function focus(id) {
 	controls.update();
 }
 
+/** Wireframe on or off for every shared material, including the UV checker. */
 function setWireframe(enabled) {
 	for (const material of [...Object.values(materials), uvCheckerMaterial]) {
 		if (material?.isMaterial) material.wireframe = enabled;
@@ -315,10 +320,12 @@ function updateNormals() {
 	});
 }
 
+/** Starts opening or closing a wing that opens. */
 function toggleFold(piece) {
 	if (piece.fold) piece.fold.target = 1 - piece.fold.target;
 }
 
+/** Advances a wing fold animation (eased, `duration` seconds) and applies it. */
 function stepFold(piece, dt) {
 	const { fold } = piece;
 	if (!fold || fold.t === fold.target) return;
@@ -365,11 +372,13 @@ function setupPicking() {
 	});
 }
 
+/** Whether `object` is `ancestor` or one of its descendants. */
 function isInside(object, ancestor) {
 	for (let node = object; node; node = node.parent) if (node === ancestor) return true;
 	return false;
 }
 
+/** Viewer menu: View (focus, wireframe, normals, UV checker) and one folder per piece with its params and pose. */
 function createMenu() {
 	const pane = new Pane({ title: 'Piezas' });
 
@@ -421,6 +430,7 @@ function createMenu() {
 	}
 }
 
+/** Keeps the camera, renderers (WebGL and CSS2D) and post-processing at the window size. */
 function onResize() {
 	const width = container.offsetWidth;
 	const height = container.offsetHeight;
@@ -434,6 +444,7 @@ function onResize() {
 	bloomPass.resolution.set(width, height);
 }
 
+/** Frame loop: wing fold animations, orbit controls and rendering. */
 function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();

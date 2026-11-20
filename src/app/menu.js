@@ -159,6 +159,7 @@ function variantOptions(kind) {
 	return Object.fromEntries(Object.entries(PART_KINDS[kind]).map(([id, variant]) => [variant.label, id]));
 }
 
+/** Tweakpane list options (`{ label: id }`) for the given hardpoint ids. */
 function hardpointOptions(ids) {
 	return Object.fromEntries(ids.map((id) => [ALL_HARDPOINTS[id].label, id]));
 }

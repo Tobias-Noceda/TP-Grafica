@@ -51,6 +51,7 @@ const CRANE_KEYS = {
 };
 const craneKeys = new Set();
 
+/** Renderer (ACES tone mapping), scene, studio environment for reflections, shadows and the bloom post-processing chain. */
 function setupThreeJs() {
 	container = document.getElementById('container3D');
 
@@ -79,6 +80,10 @@ function setupThreeJs() {
 	composer.addPass(new OutputPass());
 }
 
+/**
+ * Builds the hangar, platform, fuselage, crane and space, then the loadout, floor layout, assembly sequence, cameras
+ * and menu, and defines the app actions (live edits in preview, Generate, Complete, Reset, pause).
+ */
 function buildScene() {
 	const materials = createMaterials(renderer);
 	scene.add(buildHangar(materials));
@@ -227,15 +232,18 @@ function buildScene() {
 	scene.add(space.group);
 }
 
+/** Pushes the app mode and pause state to the menu (folder visibility, button titles). */
 function syncMenu() {
 	menu?.setMode({ mode, paused });
 }
 
+/** Switches the app mode: 'preview' (live edits), 'assembling' (sequence running or paused) or 'empty' (after Reset). */
 function setMode(next) {
 	mode = next;
 	syncMenu();
 }
 
+/** Keeps every camera, the renderer and the post-processing chain at the container size. */
 function onResize() {
 	const width = container.offsetWidth;
 	const height = container.offsetHeight;
@@ -247,6 +255,7 @@ function onResize() {
 	bloomPass.resolution.set(width, height);
 }
 
+/** Keyboard: arrows drive the crane, SPACE pauses the assembly, T gear, O wings, C / 1-7 cameras. */
 function onKeyDown(event) {
 	// Typing in a menu field must not switch cameras or toggle parts
 	if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
@@ -266,10 +275,12 @@ function onKeyDown(event) {
 	if (digit) cameras.set(Number(digit[1]) - 1);
 }
 
+/** Releases a crane arrow key. */
 function onKeyUp(event) {
 	if (craneKeys.delete(event.code)) updateCraneInput();
 }
 
+/** Turns the arrow keys held down into the crane's horizontal input (opposite keys cancel out). */
 function updateCraneInput() {
 	const input = { x: 0, z: 0 };
 	for (const code of craneKeys) {
@@ -284,10 +295,12 @@ function toggleWings() {
 	if (mode === 'preview' && config.assembly.layout !== 'floor') toggle(wingFold);
 }
 
+/** Flips a toggle animation's target between 0 and 1. */
 function toggle(state) {
 	state.target = 1 - state.target;
 }
 
+/** Moves a toggle animation towards its target in `duration` seconds and applies it with smoothstep easing. */
 function stepToggle(state, dt, apply) {
 	if (state.t === state.target) return;
 	const step = dt / state.duration;
@@ -295,6 +308,10 @@ function stepToggle(state, dt, apply) {
 	apply(THREE.MathUtils.smoothstep(state.t, 0, 1));
 }
 
+/**
+ * Frame loop. The crane and the assembly get the speed-scaled, pause-aware dt while a sequence runs; cameras, gear,
+ * wings, space and rendering always use the real dt. Shadows are re-rendered only when marked dirty.
+ */
 function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();

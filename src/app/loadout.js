@@ -35,6 +35,7 @@ export function hardpointsFor(kind, variantId) {
 const KIND_ORDER = ['wing', 'thruster', 'weapon'];
 const KIND_LABELS = { wing: 'Wing', thruster: 'Thruster', weapon: 'Weapon' };
 
+/** Whether a built part contains any mesh (empty groups, e.g. the right socket of a shared engine, get no piece). */
 function hasMesh(object) {
 	let found = false;
 	object.traverse((child) => {
@@ -215,6 +216,7 @@ export function createLoadout(fuselage, materials) {
 	};
 }
 
+/** Disposes every geometry under `object`. Materials are shared with the rest of the scene and are kept. */
 function disposeGeometries(object) {
 	object.traverse((child) => child.geometry?.dispose());
 }

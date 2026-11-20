@@ -146,6 +146,7 @@ function followOrbital(id, label, camera, dom, getTarget, { offset, minDistance,
 	return entry;
 }
 
+/** Camera list entry for an `OrbitControls` camera: controls on while active, damped update every frame. */
 function orbitalEntry(id, label, camera, controls) {
 	return {
 		id,

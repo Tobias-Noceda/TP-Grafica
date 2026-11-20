@@ -20,10 +20,12 @@ export function buildPylon(normal, clearance, material, { width = 0.12, depth = 
 	return pylon;
 }
 
+/** Box mesh with its own geometry. */
 export function box(width, height, depth, material) {
 	return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
 }
 
+/** Sets the mesh position and returns it. */
 export function place(mesh, x, y, z) {
 	mesh.position.set(x, y, z);
 	return mesh;

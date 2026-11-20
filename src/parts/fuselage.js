@@ -113,6 +113,7 @@ function noseSection(z) {
 	return lerpSection(BODY, NOSE_TIP, t);
 }
 
+/** Linear blend of two body sections (half width, bottom, top) at t ∈ [0, 1]. */
 function lerpSection(a, b, t) {
 	const lerp = THREE.MathUtils.lerp;
 	return {
@@ -122,6 +123,7 @@ function lerpSection(a, b, t) {
 	};
 }
 
+/** Section grown by `margin` on every side (used for frames and trims around the hull). */
 function grow({ halfWidth, bottom, top }, margin) {
 	return { halfWidth: halfWidth + margin, bottom: bottom - margin, top: top + margin };
 }
@@ -150,10 +152,12 @@ function taperedBox(back, front, zBack, zFront, material) {
 	return new THREE.Mesh(geometry, material);
 }
 
+/** Box mesh with its own geometry. */
 function box(width, height, depth, material) {
 	return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
 }
 
+/** Sets the mesh position and returns it. */
 function place(mesh, x, y, z) {
 	mesh.position.set(x, y, z);
 	return mesh;

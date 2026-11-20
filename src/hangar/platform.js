@@ -46,12 +46,14 @@ export function buildPlatform(materials) {
 	return platform;
 }
 
+/** Axis-aligned box mesh, with world-scale UVs when the material is textured. */
 function box(width, height, depth, material, tileSize) {
 	const geometry = new THREE.BoxGeometry(width, height, depth);
 	if (tileSize) setBoxProjectedUVs(geometry, tileSize);
 	return new THREE.Mesh(geometry, material);
 }
 
+/** Sets the mesh position and returns it. */
 function place(mesh, x, y, z) {
 	mesh.position.set(x, y, z);
 	return mesh;
