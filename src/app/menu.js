@@ -7,8 +7,10 @@ import { ALL_HARDPOINTS, PART_KINDS, hardpointsFor } from './loadout.js';
  * `onWingChange()` (type or geometric params), `onWingToggle()` (open/close button), `onWeaponChange()` and
  * `onThrusterChange()`. The assembly folder edits `config.assembly.layout` ('ship' | 'floor') and calls
  * `onLayoutChange(value)`. The view folder edits `config.view`: `onCameraChange(index)` (options from `cameraOptions`,
- * `{ label: index }`) and `onShadowsChange(level)`. Call `refresh()` on the returned pane after changing
- * `config.view.camera` from the keyboard.
+ * `{ label: index }`) and `onShadowsChange(level)`. The assembly folder also has Generate / Pause / Complete / Reset
+ * buttons (`onGenerate`, `onTogglePause`, `onComplete`, `onReset`), a `config.assembly.speed` list and a status monitor.
+ * Returns `{ pane, refresh(), setMode({ mode, paused }) }`: call `refresh()` after changing `config.view.camera` from
+ * the keyboard, and `setMode` when the app mode ('preview' | 'assembling' | 'empty') or the pause state changes.
  */
 export function createMenu(
 	config,
@@ -16,6 +18,10 @@ export function createMenu(
 		onWingChange,
 		onWingToggle,
 		onLayoutChange,
+		onGenerate,
+		onTogglePause,
+		onComplete,
+		onReset,
 		onWeaponChange,
 		onThrusterChange,
 		cameraOptions,
@@ -34,7 +40,15 @@ export function createMenu(
 	}).on('change', (event) => onShadowsChange(event.value));
 
 	const assembly = pane.addFolder({ title: 'Assembly' });
-	assembly
+	assembly.addButton({ title: 'Generate' }).on('click', () => onGenerate());
+	const pauseButton = assembly.addButton({ title: 'Pause (SPACE)' });
+	pauseButton.on('click', () => onTogglePause());
+	const completeButton = assembly.addButton({ title: 'Complete' });
+	completeButton.on('click', () => onComplete());
+	assembly.addButton({ title: 'Reset' }).on('click', () => onReset());
+	assembly.addBinding(config.assembly, 'speed', { label: 'speed', options: { x1: 1, x2: 2, x4: 4 } });
+	assembly.addBinding(config.assembly, 'status', { label: 'status', readonly: true, interval: 200 });
+	const layoutBinding = assembly
 		.addBinding(config.assembly, 'layout', {
 			label: 'pieces',
 			options: { 'On the ship': 'ship', 'On the floor': 'floor' },
@@ -81,7 +95,18 @@ export function createMenu(
 	);
 	Object.values(folders).forEach((folder) => folder.refresh());
 
-	return pane;
+	return {
+		pane,
+		refresh: () => pane.refresh(),
+		setMode({ mode, paused }) {
+			const assembling = mode === 'assembling';
+			// While the crane assembles, only the View and Assembly folders are shown: no ship building options
+			for (const folder of [wings, folders.weapon.folder, folders.thruster.folder]) folder.hidden = assembling;
+			layoutBinding.hidden = mode !== 'preview';
+			pauseButton.disabled = completeButton.disabled = !assembling;
+			pauseButton.title = paused ? 'Continue (SPACE)' : 'Pause (SPACE)';
+		},
+	};
 }
 
 /**
@@ -122,6 +147,7 @@ function partFolder(pane, title, kind, entries, onChange) {
 		onChange();
 	});
 	return {
+		folder,
 		refresh() {
 			if (showPositions()) onChange();
 		},

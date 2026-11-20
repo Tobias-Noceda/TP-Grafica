@@ -84,10 +84,11 @@ empty sockets must look closed. The top ones are round pads (D-012). Each cover 
 and shows it again. Thruster sockets sit on the outer face of the tail plate (`REAR_PLATE_DEPTH`). Covers on nose-side
 sockets are yawed to follow the nose taper.
 
-### D-010 Instant mounting until the crane exists
+### D-010 Instant mounting in preview
 
-Until the crane and assembly exist, `app/loadout.js` mounts parts instantly when the menu changes. It disposes the
-replaced parts' geometries but keeps the shared materials.
+In the preview mode (before Generate, and after an assembly finishes), `app/loadout.js` still mounts parts instantly
+when the menu changes. The crane only takes over on Generate (D-028). Replaced parts' geometries are disposed, and
+the shared materials are kept.
 
 ### D-011 Hardpoints are positions shared by weapons and thrusters
 
@@ -314,3 +315,65 @@ to critical, like an anti-sway hoist: the magnet leans ~7° while accelerating a
 instead of swinging back and forth, so the crane feels responsive. The two ceiling point lights over the ship were moved
 down from y = 13.5 to 12 so the bridge and trolley do not pass through them. The crane does not cast shadows (it would
 darken the ship under the spot light).
+
+Manual driving is horizontal only (arrows). The hoist moves only in the automatic assembly, which also uses two
+placement aids (D-028): a precision mode at 35 % speed and acceleration, and a swing lock that stops the carriages
+from driving the pendulum and steadies it out at 6 /s, like a rigger's guide lines.
+
+### D-027 Floor layout: mounted pose, translated
+
+Each piece waits on the floor in its **mounted world orientation**, only translated. So the crane never rotates a
+part in transit: lift, carry, lower. `Object3D.attach` keeps negative scale, so mirrored right-side parts work too.
+Placement first mounts everything and measures it, then detaches every piece before moving any. Parts on the wing
+hardpoint hang from a wing socket, and moving the wing first would carry them along.
+
+Zones keep a 1.5 m walkway around the platform:
+
+- **Wings** lie beside the platform at their socket's z, so the crane carries them straight across.
+- **Weapons** sit in a row at the front-right.
+- **Thrusters** sit in a row at the front-left, mirroring the weapons.
+
+Stands are primitives:
+
+- **Wing pads.**
+- **A jig** under `part.userData.support`. The TIE wing declares a point in the middle of its neck, so the wing stays
+  level and the jig is centred on the neck.
+- **Pallets** under the rack pieces.
+- **Slim props** under any underside still floating more than 10 cm above its rest. They are placed greedily at the
+  point farthest from every support, and each rod stops under the lowest point of its saddle footprint, so it never
+  crosses the part.
+
+The TIE wing root gets a start cap and a dark flange, so it is not see-through off the hull.
+
+Every piece gets a part-local grip point for the magnet. All raycasts against parts are double-sided, because
+mirrored parts reverse their triangle winding and a front-side-only raycast misses their faces.
+
+### D-028 Assembly sequence: outward approach, live targets, precise insertion
+
+The sequence follows the brief: move over the piece, lower and grab, lift to a safe height, move over the socket,
+lower, release, retract. Design choices:
+
+- **Outward approach.** Parts are inserted along their socket's outward normal from an approach point 0.8 m
+  (wings) / 0.5 m away. Side and rear parts are lowered beside the hull and slid in, never dropped through it. Top
+  parts simply come down.
+- **Live targets.** Targets come from the socket's current world matrix every frame, so the landing gear (T) can move
+  the ship mid-sequence.
+- **Safe height.** It is computed from `Box3`s of the ship and of everything on the floor, plus the carried part's
+  hang below the magnet.
+- **Precise insertion.** Measured in simulation, braking at the end of the slide swung pieces 4–10 cm past their
+  socket into the hull. From the final approach until the magnet has backed off, the crane now runs in precision mode
+  with the swing lock on, and targets are corrected by the grip offset measured at grab time. Pieces then never pass
+  their socket, and the release snap (`mountPiece`) is ≤ 0.1 mm.
+- **Re-issued targets.** Targets are re-issued every frame, so a carriage only clears its "arrived" flag when its
+  target really changes.
+- **Simulation time.** The crane and the sequence get `dt × speed` (×1/×2/×4, live) or 0 when paused. Cameras,
+  gear and rendering keep the real dt.
+- **Menu.** Configuration is hidden while assembling.
+- **Reset.** It raises the magnet before handing the crane back, because the manual controls have no hoist.
+
+Simulated results:
+
+- Every configuration completes in order: wings, then thrusters, then weapons.
+- No collisions with floor pieces or the ship in transit.
+- Complete, cancel, restart and a gear toggle mid-run all behave correctly.
+- About 50 s per piece at ×1.

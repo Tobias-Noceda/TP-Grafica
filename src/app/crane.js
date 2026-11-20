@@ -12,6 +12,8 @@ const PIVOT_Y = TROLLEY_Y - 0.75; // bottom of the hoist drum, where the cable l
 const MAGNET_DROP = 1.2; // cable end → magnet face
 const DRUM_RADIUS = 0.3;
 const GRAVITY = 9.81;
+const PRECISION = 0.35; // speed and acceleration factor in precision mode
+const SWING_LOCK_RATE = 6; // 1/s, how fast a locked swing straightens
 const SWING_DAMPING = 2.2; // 1/s, close to critical: like an anti-sway hoist, the swing settles in about one period
 const MAX_SUBSTEP = 1 / 120;
 
@@ -118,6 +120,7 @@ export function buildCrane(materials) {
 	const sway = { x: { angle: 0, rate: 0 }, z: { angle: 0, rate: 0 } };
 	const input = { x: 0, z: 0, y: 0 };
 	let auto = false;
+	let swingLocked = false;
 	const clearTargets = () => {
 		for (const key in axes) axes[key].target = null;
 	};
@@ -158,6 +161,22 @@ export function buildCrane(materials) {
 			const tol = THREE.MathUtils.degToRad(tolDeg);
 			return [sway.x, sway.z].every((s) => Math.abs(s.angle) < tol && Math.abs(s.rate) < tol);
 		},
+		/**
+		 * Precision mode for the last centimetres of an assembly: every axis runs at PRECISION of its speed and
+		 * acceleration. The hanging magnet leans by about atan(a / g) while the carriage accelerates, so a gentle
+		 * acceleration keeps a part sliding into its socket from swinging into the hull.
+		 */
+		setPrecision(on) {
+			for (const axis of Object.values(axes)) axis.scale = on ? PRECISION : 1;
+		},
+		/**
+		 * Swing lock for precise placement, like the guide lines riggers use: while on, the pendulum is no longer
+		 * driven by the carriages and any remaining sway dies out in well under a second, so a part being slid into
+		 * its socket follows the crane exactly instead of swinging into the hull.
+		 */
+		setSwingLock(on) {
+			swingLocked = !!on;
+		},
 		faceWorldPosition(target = new THREE.Vector3()) {
 			crane.updateMatrixWorld(true);
 			return magnet.userData.attachPoint.getWorldPosition(target);
@@ -175,8 +194,14 @@ export function buildCrane(materials) {
 					// Automatic drive: critical damping for the current cable length (anti-sway), the fastest
 					// settle without swinging back. More damping would be overdamped and creep in slowly.
 					const length = cableLength + 1;
-					const damping = auto ? 2 * Math.sqrt(GRAVITY / length) : SWING_DAMPING;
-					swingStep(sway[key], acceleration, length, damping, h);
+					if (swingLocked) {
+						// Guided load: the sway is steadied out and no longer driven by the carriages
+						sway[key].rate = 0;
+						sway[key].angle *= Math.exp(-SWING_LOCK_RATE * h);
+					} else {
+						const damping = auto ? 2 * Math.sqrt(GRAVITY / length) : SWING_DAMPING;
+						swingStep(sway[key], acceleration, length, damping, h);
+					}
 				}
 				axes.y.step(-input.y, h);
 			}
@@ -205,22 +230,29 @@ export function buildCrane(materials) {
  */
 const TARGET_ZONE = 0.05;
 function carriage(get, set, [min, max], maxSpeed, accel) {
-	const brake = 0.45 * accel;
-	const gain = Math.sqrt((2 * brake) / TARGET_ZONE);
 	const state = {
+		// Precision mode scales speed and acceleration down (see `setPrecision`)
+		scale: 1,
 		position: get(),
 		velocity: 0,
 		maxSpeed,
 		target: null,
 		arrived: false,
 		setTarget(value) {
-			state.target = THREE.MathUtils.clamp(value, min, max);
+			const target = THREE.MathUtils.clamp(value, min, max);
+			// Live targets are re-issued every frame: only a real change restarts the approach
+			if (state.target !== null && Math.abs(target - state.target) < 1e-4) return;
+			state.target = target;
 			state.arrived = false;
 		},
 		step(input, dt) {
 			const brakeUp = Math.sqrt(2 * accel * Math.max(max - state.position, 0));
 			const brakeDown = -Math.sqrt(2 * accel * Math.max(state.position - min, 0));
-			let wanted = input * maxSpeed;
+			const vmax = maxSpeed * state.scale;
+			const a = accel * state.scale;
+			const brake = 0.45 * a;
+			const gain = Math.sqrt((2 * brake) / TARGET_ZONE);
+			let wanted = input * vmax;
 			if (state.target !== null) {
 				if (state.arrived) {
 					wanted = 0;
@@ -228,13 +260,12 @@ function carriage(get, set, [min, max], maxSpeed, accel) {
 					const d = state.target - state.position;
 					const mag = Math.abs(d);
 					wanted =
-						Math.sign(d) *
-						(mag < TARGET_ZONE ? gain * mag : Math.min(maxSpeed, Math.sqrt(2 * brake * mag)));
+						Math.sign(d) * (mag < TARGET_ZONE ? gain * mag : Math.min(vmax, Math.sqrt(2 * brake * mag)));
 				}
 			}
 			const desired = THREE.MathUtils.clamp(wanted, brakeDown, brakeUp);
 			const before = state.velocity;
-			const change = THREE.MathUtils.clamp(desired - before, -accel * dt, accel * dt);
+			const change = THREE.MathUtils.clamp(desired - before, -a * dt, a * dt);
 			state.velocity += change;
 			state.position += state.velocity * dt;
 			if (state.position <= min || state.position >= max) {

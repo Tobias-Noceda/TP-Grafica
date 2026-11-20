@@ -90,15 +90,17 @@ app.html                 main scene entry
 piezas.html              part viewer entry
 public/textures/         imported PBR textures (Poly Haven, CC0) — see CREDITS.md
 src/
-  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE, T, O, C, 1-7, arrows → crane)
+  app/main.js            renderer, scene, post-processing (bloom), loop, keyboard (SPACE pause, T, O, C, 1-7, arrows → crane); app modes, Generate/Complete/Reset, sim dt × speed
   app/materials.js       texture loading + shared material library (hangar + ship materials)
   hangar/hangar.js       hangar shell, walls, ceiling, front frame, props, interior lights (HANGAR dimensions)
   hangar/platform.js     central assembly platform (PLATFORM dimensions, mountPoint on the deck)
   scene/space.js         starfield, procedural gas giant + atmosphere shaders
-  app/crane.js           hierarchical underhung crane with magnet tip, arrow-key driven with inertia + pendulum sway
-  app/assembly.js        state machine for the pick/lift/move/lower/release sequence
+  app/crane.js           hierarchical underhung crane: bridge, trolley, hoist drum, swinging cable, magnet tip; manual
+                         (arrows, horizontal only) and automatic drive (moveTo, precision, swing lock)
+  app/assembly.js        state machine for the pick/lift/move/lower/insert/release sequence (§5.6)
   app/cameras.js         7 cameras + switching
-  app/menu.js            Tweakpane UI, top-right (wings type/params/open + weapon and thruster type/position; generate, pause, camera… to add)
+  app/menu.js            Tweakpane UI, top-right: View, Assembly (Generate, Pause, Complete, Reset, speed, status,
+                         pieces preview), Wings, Weapons, Thrusters (hidden while assembling)
   app/loadout.js         wings + which part kind sits on which hardpoint (incl. the wing one); equip/unequip, disposal; pieces() in assembly order, mountPiece/detachPiece
   app/layout.js          floor layout: each piece at its mounted world pose translated (wings beside the platform on pads/jig,
                          weapons rack front-right, thrusters rack front-left), stands, grip point for the magnet
@@ -128,11 +130,10 @@ src/
 
 Status: `hangar/`, `scene/`, `app/main.js`, `app/materials.js`, `app/loadout.js`, `app/menu.js` (view, wings, weapons, thrusters),
 `app/cameras.js` (7 cameras), `app/shadows.js` (spot + contact shadow), `app/crane.js` (manual + automatic drive, hoist),
+`app/layout.js` (floor layout), `app/assembly.js` (assembly sequence),
 `geometry/uv.js`, `geometry/curves.js`, `geometry/frames.js`, `geometry/sweep.js` (revolution + variable sweep),
 `parts/fuselage.js`, `parts/landingGear.js`, `parts/sockets.js`, `parts/propulsors/` (rearEngine, quadBlock),
-`parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep,
-crane hoisting, assembly,
-registry) is still to be written.
+`parts/weapons/` (machineGun, minigun), `parts/wings/` (xwing, plane, tie) with their maps and `viewer/main.js` (gallery) exist. The rest (caps module, constant sweep, registry) is still to be written.
 
 `parts/registry.js` is the single source of truth. Both `app.html` and `piezas.html` read from it, as the brief
 requires.
@@ -311,10 +312,11 @@ cable (variable length, `HOIST` 1.5–10.9 m) + magnet → attachPoint / cameraM
   cable length), `moveTo({ x, z, y })` (y = magnet-face world height; position control with a √ braking profile at
   0.45·a and a linear last 5 cm, so no overshoot), `arrived()`, `settled(tolDeg)`, `faceWorldPosition()`,
   `cableLength()`. Long moves take ~7–9 s at ×1 and the sway settles 1–4 s later, leaving ≤ 5 cm of offset at
-  0.2°.
+  0.2°. Precision placement: `setPrecision(on)` (35 % speed and acceleration) and `setSwingLock(on)` (sway no
+  longer driven, decays at 6 /s, like a rigger's guide lines).
 - **Pick-up / drop-off** with `Object3D.attach(child)`, which reparents while keeping the world transform:
     - grab: `crane.userData.attachPoint.attach(part)` (magnet face)
-    - release: `socket.attach(part)`, then snap `part.position.set(0,0,0); part.quaternion.identity()`
+    - release: `loadout.mountPiece(piece)` (socket.add + the recorded mount-local transform, cover hidden)
 - World queries: `getWorldPosition`, `getWorldQuaternion`, `localToWorld`, `worldToLocal`, `updateMatrixWorld(true)`
   before reading.
 - Use `Box3().setFromObject(obj)` to compute the safe lift height (above the fuselage and the parts already mounted).
@@ -323,20 +325,49 @@ cable (variable length, `HOIST` 1.5–10.9 m) + magnet → attachPoint / cameraM
 - Rotations: Euler with an explicit `rotation.order` when it matters. Use `Quaternion.slerp` for smooth orientation
   interpolation and to avoid gimbal lock.
 
-### 5.6 Assembly sequence (`app/assembly.js`)
+### 5.6 Assembly sequence (`app/assembly.js`, `app/layout.js`) — implemented (D-027, D-028)
 
-A finite-state machine driven by `THREE.Clock` delta time, so it does not depend on the frame rate:
+**Floor layout** (`createFloorLayout(scene, materials, shadows)` → `placeOnFloor(pieces, loadout)`,
+`placeOnShip(...)`, `clear()`): each piece's floor pose is its **mounted world pose translated** (same rotation and
+scale; mirrored R parts keep `scale.x = -1`), so the crane only ever translates parts. Zones, with a 1.5 m walkway
+outside the platform square: wings beside the platform at their socket's z (left wing +x, right wing −x) on floor
+pads, with a jig under `part.userData.support` (the TIE neck) when the root floats; weapons in a row at the front-right
+(x < 0, z > 0) and thrusters at the front-left, each on a pallet. Slim props (foot, chrome rod, rubber saddle) go under
+whatever still floats (`buildProps`: upward ray grid, greedy farthest-from-support placement). Every piece gets a
+part-local `gripPoint` (`userData.gripPoint` or the highest point of a downward ray grid). Raycasts against parts
+are made double-sided (`raycastPart`) because mirrored parts flip their winding.
+
+**Sequence** (`createAssembly({ crane, loadout, fuselage, layout, shadows, onDone })` →
+`{ start(pieces), update(dt), complete(), cancel(), status(), phase }`), one piece at a time in `loadout.pieces()`
+order (wings → thrusters → weapons):
 
 ```
-IDLE → MOVE_OVER_PART → LOWER → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET → LOWER_TO_MOUNT → RELEASE → RETRACT → (next | DONE)
+RAISE → MOVE_OVER_PART → SETTLE_PART → LOWER_TO_GRAB → GRAB → LIFT_SAFE → MOVE_OVER_SOCKET → SETTLE_SOCKET →
+LOWER_TO_APPROACH → INSERT → SETTLE_INSERT → RELEASE → RETRACT → RETRACT_UP → (next piece | PARK_XZ → PARK_Y → DONE)
 ```
 
-- `generate(config)` resets the scene, builds the fuselage on the platform, lays the parts on the floor without
-  overlaps, and starts the queue.
-- `pause()` / `resume()` freeze `dt` (SPACE key).
-- `complete()` (optional) snaps all remaining parts to their sockets.
-- `reset()` cancels the sequence and removes and **disposes** all generated parts (geometries and materials).
-- Interpolate positions with `Vector3.lerpVectors` plus easing (`MathUtils.smoothstep`).
+- Each step issues `crane.userData.moveTo` targets and waits for `arrived()`. Settle steps wait for `settled()` with
+  a timeout, and the grab/release steps are timed dwells.
+- **Live targets**: the final grip point `G = socket.matrixWorld · local · gripPoint` and the approach point
+  `A = G + outward · 0.8 m` (wings) / 0.5 m are recomputed every frame. Toggling the gear mid-sequence is followed.
+  Outward is the socket's `outward`, with x negated on `R` sockets, then brought to world space.
+- **Approach along the outward**: wings, nose guns and rear thrusters are lowered beside the hull and slid in
+  horizontally. Top and wing-top parts come straight down.
+- **Safe height**: above the fuselage (with mounted parts) and everything still on the floor, plus the carried
+  part's hang below the magnet, plus 0.5 m, clamped to the hoist range.
+- **Precision placement**: from `LOWER_TO_APPROACH` to `RETRACT`, `setPrecision(true)` (35 % speed and acceleration)
+  and `setSwingLock(true)` (sway steadied out) keep the part on a straight line into its socket. The face targets are
+  shifted by the grip offset measured at grab time. Release then `loadout.mountPiece` snaps by ≤ 0.1 mm.
+- **Time** (`main.js`): while the phase is `'running'`, `crane.update` and `assembly.update` get `dt × speed` (×1/×2/×4,
+  live), or 0 when paused. While `'resetting'` they get the real dt. Cameras, gear and rendering always use the real dt.
+- **App modes** (`main.js`): `'preview'` (configuration rebuilds the ship live; menu `pieces` list shows the floor
+  layout), `'assembling'`, and `'empty'` (after Reset: nothing built until Generate).
+    - **Generate** rebuilds the pieces from the config, closes the wings, lays them on the floor and starts.
+    - **Complete** mounts every remaining piece and parks the crane.
+    - **Reset** cancels, raises the magnet back to its park height (the crane has no manual hoist) and disposes every
+      piece and stand.
+    - While assembling, the Wings / Weapons / Thrusters folders are hidden and `O` is ignored.
+- A full run takes about 4.5–5.5 min at ×1 (≈ 50 s per piece), about 1.2 min at ×4.
 
 ### 5.7 Cameras (`app/cameras.js`)
 

@@ -16,9 +16,14 @@ import { createMenu } from './menu.js';
 import { createCameras } from './cameras.js';
 import { setupShadows } from './shadows.js';
 import { buildCrane } from './crane.js';
+import { createAssembly } from './assembly.js';
 
 let container, renderer, scene, cameras, renderPass, composer, bloomPass, space, fuselage, loadout, shadows, menu;
-let crane, layout;
+let crane, layout, assembly;
+let generate, reset, complete, togglePause;
+// 'preview' (live edits), 'assembling' (sequence running or paused), 'empty' (after Reset: nothing built)
+let mode = 'preview';
+let paused = false;
 const clock = new THREE.Clock();
 
 // Ship configuration edited by the menu
@@ -27,8 +32,8 @@ const config = {
 	weapon: { variant: 'machineGun', hardpoint: 'nose' },
 	thruster: { variant: 'rearEngine', hardpoint: 'rear' },
 	view: { camera: 0, shadows: 'low' },
-	// Where the pieces are: mounted on the ship or spread on the hangar floor (preview for the crane assembly)
-	assembly: { layout: 'ship' },
+	// Where the pieces are (preview only), sequence speed (x1, x2, x4) and a status line for the menu
+	assembly: { layout: 'ship', speed: 1, status: 'Idle' },
 };
 
 // Toggle animations: `t` moves towards `target` in `duration` seconds and is applied with easing.
@@ -120,6 +125,7 @@ function buildScene() {
 	// Edits need the mounted ship (builders and wing hardpoint sockets live on it), so go back to it first and
 	// restore the floor layout afterwards
 	const edit = (change) => () => {
+		if (mode !== 'preview') return;
 		const onFloor = config.assembly.layout === 'floor';
 		if (onFloor) layout.placeOnShip(loadout.pieces(), loadout);
 		change();
@@ -140,12 +146,74 @@ function buildScene() {
 	equipWings();
 	equipWeapon();
 	equipThruster();
+
+	// Generate / Reset: the sequence works on pieces laid on the floor and the loadout is rebuilt from `config`
+	const buildAll = () => {
+		loadout.equipWings(config.wing.variant, config.wing.params);
+		for (const kind of ['weapon', 'thruster']) {
+			try {
+				loadout.equip(kind, config[kind].variant, config[kind].hardpoint);
+			} catch (error) {
+				console.warn(error.message);
+			}
+		}
+	};
+	generate = () => {
+		if (mode === 'assembling' && assembly.phase !== 'idle') assembly.cancel();
+		loadout.disposeAll();
+		layout.clear();
+		buildAll();
+		wingFold.t = wingFold.target = 0;
+		loadout.setWingsOpen(0);
+		layout.placeOnFloor(loadout.pieces(), loadout);
+		shipShadows();
+		shadows.markDirty();
+		paused = false;
+		setMode('assembling');
+		assembly.start(loadout.pieces());
+	};
+	reset = () => {
+		if (assembly.phase !== 'idle') assembly.cancel();
+		loadout.disposeAll();
+		layout.clear();
+		paused = false;
+		shadows.markDirty();
+		setMode('empty');
+	};
+	complete = () => {
+		if (mode === 'assembling') assembly.complete();
+	};
+	togglePause = () => {
+		if (mode !== 'assembling') return;
+		paused = !paused;
+		syncMenu();
+	};
+	assembly = createAssembly({
+		crane,
+		loadout,
+		fuselage,
+		layout,
+		shadows,
+		onDone: () => {
+			paused = false;
+			config.assembly.layout = 'ship';
+			shipShadows();
+			shadows.markDirty();
+			setMode('preview');
+			menu?.refresh();
+		},
+	});
+
 	menu = createMenu(config, {
+		onGenerate: generate,
+		onTogglePause: togglePause,
+		onComplete: complete,
+		onReset: reset,
 		onWingChange: equipWings,
 		onWingToggle: () => toggleWings(),
 		onLayoutChange: (value) => {
 			config.assembly.layout = value;
-			applyLayout();
+			if (mode === 'preview') applyLayout();
 		},
 		onWeaponChange: equipWeapon,
 		onThrusterChange: equipThruster,
@@ -154,8 +222,18 @@ function buildScene() {
 		onShadowsChange: (level) => shadows.setQuality(level),
 	});
 
+	syncMenu();
 	space = buildSpace();
 	scene.add(space.group);
+}
+
+function syncMenu() {
+	menu?.setMode({ mode, paused });
+}
+
+function setMode(next) {
+	mode = next;
+	syncMenu();
 }
 
 function onResize() {
@@ -176,6 +254,10 @@ function onKeyDown(event) {
 		event.preventDefault();
 		craneKeys.add(event.code);
 		updateCraneInput();
+	}
+	if (event.code === 'Space') {
+		event.preventDefault();
+		togglePause?.();
 	}
 	if (event.code === 'KeyT') toggle(gear);
 	if (event.code === 'KeyO') toggleWings();
@@ -199,7 +281,7 @@ function updateCraneInput() {
 
 // Wings stay closed while the pieces are on the floor
 function toggleWings() {
-	if (config.assembly.layout !== 'floor') toggle(wingFold);
+	if (mode === 'preview' && config.assembly.layout !== 'floor') toggle(wingFold);
 }
 
 function toggle(state) {
@@ -217,7 +299,11 @@ function animate() {
 	requestAnimationFrame(animate);
 	const dt = clock.getDelta();
 
-	crane.userData.update(dt);
+	const phase = assembly.phase;
+	const simDt = phase === 'running' ? (paused ? 0 : dt * config.assembly.speed) : dt;
+	crane.userData.update(simDt);
+	if (phase === 'running' || phase === 'resetting') assembly.update(simDt);
+	config.assembly.status = assembly.status() + (mode === 'assembling' && paused ? ' (paused)' : '');
 	cameras.update(dt);
 	space.update(dt);
 	// Moving casters re-render the shadow map; idle frames skip the shadow pass
